@@ -16,3 +16,31 @@ type ContentItem struct {
 func (ContentItem) TableName() string {
 	return "content_items"
 }
+
+type ContentResponse struct {
+	ID        uint     `json:"id"`
+	Date      string   `json:"date"`
+	Text      string   `json:"text"`
+	Tags      []string `json:"tags"`
+	BgURL     string   `json:"bg_url"`
+	Music     string   `json:"music"`
+	CreatedAt string   `json:"createdAt"`
+	UpdatedAt string   `json:"updatedAt"`
+}
+
+func NewContentResponse(item *ContentItem) *ContentResponse {
+	if item == nil {
+		return nil
+	}
+
+	return &ContentResponse{
+		ID:        item.ID,
+		Date:      item.Date,
+		Text:      item.Text,
+		Tags:      []string(item.Tags),
+		BgURL:     item.BgURL,
+		Music:     item.Music,
+		CreatedAt: item.CreatedAt.Format("2006-01-02"),
+		UpdatedAt: item.UpdatedAt.Format("2006-01-02"),
+	}
+}

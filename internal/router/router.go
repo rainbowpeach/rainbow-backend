@@ -23,11 +23,17 @@ func New(cfg config.Config, db *gorm.DB) *gin.Engine {
 	engine.Use(middleware.CORS(cfg.AllowOrigins))
 
 	adminRepo := repo.NewAdminRepository(db)
+	contentRepo := repo.NewContentRepository(db)
 	tokenManager := service.NewTokenManager(cfg.JWTSecret, cfg.JWTExpiresIn)
 	authService := service.NewAuthService(adminRepo, tokenManager)
+	contentService := service.NewContentService(contentRepo)
 	adminAuthHandler := handler.NewAdminAuthHandler(authService)
+	publicContentHandler := handler.NewPublicContentHandler(contentService)
 
 	engine.GET("/health", healthHandler(cfg, db))
+
+	public := engine.Group("/api/public")
+	public.GET("/content", publicContentHandler.GetByDate)
 
 	admin := engine.Group("/api/admin")
 	admin.POST("/login", adminAuthHandler.Login)

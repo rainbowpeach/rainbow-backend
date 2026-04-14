@@ -62,6 +62,31 @@ Successful response:
 }
 ```
 
+## Public content
+
+```bash
+curl 'http://localhost:8080/api/public/content?date=2026-04-07'
+```
+
+Successful response:
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "id": 1,
+    "date": "2026-04-07",
+    "text": "今天也要被温柔对待呀",
+    "tags": ["心动", "温柔", "春天"],
+    "bg_url": "https://example.com/bg.jpg",
+    "music": "https://example.com/music.mp3",
+    "createdAt": "2026-04-07",
+    "updatedAt": "2026-04-07"
+  }
+}
+```
+
 ## Verify
 
 ```bash
