@@ -28,6 +28,7 @@ func New(cfg config.Config, db *gorm.DB) *gin.Engine {
 	authService := service.NewAuthService(adminRepo, tokenManager)
 	contentService := service.NewContentService(contentRepo)
 	adminAuthHandler := handler.NewAdminAuthHandler(authService)
+	adminContentHandler := handler.NewAdminContentHandler(contentService)
 	publicContentHandler := handler.NewPublicContentHandler(contentService)
 
 	engine.GET("/health", healthHandler(cfg, db))
@@ -40,6 +41,10 @@ func New(cfg config.Config, db *gorm.DB) *gin.Engine {
 
 	adminProtected := admin.Group("")
 	adminProtected.Use(middleware.JWTAuth(tokenManager))
+	adminProtected.POST("/content", adminContentHandler.Create)
+	adminProtected.PUT("/content/:id", adminContentHandler.Update)
+	adminProtected.DELETE("/content/:id", adminContentHandler.Delete)
+	adminProtected.GET("/content", adminContentHandler.List)
 
 	return engine
 }

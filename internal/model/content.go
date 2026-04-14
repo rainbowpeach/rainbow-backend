@@ -17,6 +17,14 @@ func (ContentItem) TableName() string {
 	return "content_items"
 }
 
+type ContentUpsertRequest struct {
+	Date  string   `json:"date" binding:"required"`
+	Text  string   `json:"text" binding:"required"`
+	Tags  []string `json:"tags" binding:"required,min=1,dive,required"`
+	BgURL string   `json:"bg_url" binding:"required"`
+	Music string   `json:"music" binding:"required"`
+}
+
 type ContentResponse struct {
 	ID        uint     `json:"id"`
 	Date      string   `json:"date"`
@@ -43,4 +51,20 @@ func NewContentResponse(item *ContentItem) *ContentResponse {
 		CreatedAt: item.CreatedAt.Format("2006-01-02"),
 		UpdatedAt: item.UpdatedAt.Format("2006-01-02"),
 	}
+}
+
+type ContentListRequest struct {
+	Page     int `form:"page" binding:"required,min=1"`
+	PageSize int `form:"pageSize" binding:"required,min=1,max=100"`
+}
+
+type ContentListResponse struct {
+	List     []*ContentResponse `json:"list"`
+	Total    int64              `json:"total"`
+	Page     int                `json:"page"`
+	PageSize int                `json:"pageSize"`
+}
+
+type IDResponse struct {
+	ID uint `json:"id"`
 }

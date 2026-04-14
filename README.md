@@ -62,6 +62,28 @@ Successful response:
 }
 ```
 
+## Admin content create
+
+```bash
+curl -X POST http://localhost:8080/api/admin/content \
+  -H 'Authorization: Bearer <token>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "date": "2026-04-07",
+    "text": "今天也要被温柔对待呀",
+    "tags": ["心动", "温柔", "春天"],
+    "bg_url": "https://example.com/bg.jpg",
+    "music": "https://example.com/music.mp3"
+  }'
+```
+
+## Admin content list
+
+```bash
+curl 'http://localhost:8080/api/admin/content?page=1&pageSize=10' \
+  -H 'Authorization: Bearer <token>'
+```
+
 ## Public content
 
 ```bash
