@@ -30,6 +30,10 @@ func main() {
 		log.Fatalf("auto migrate: %v", err)
 	}
 
+	if err := model.SeedAdmin(db, cfg.AdminUsername, cfg.AdminPassword); err != nil {
+		log.Fatalf("seed admin: %v", err)
+	}
+
 	engine := router.New(cfg, db)
 	server := &http.Server{
 		Addr:              cfg.Address(),

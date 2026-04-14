@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -14,6 +15,7 @@ type Config struct {
 	Port          string
 	Database      DatabaseConfig
 	JWTSecret     string
+	JWTExpiresIn  int64
 	AdminUsername string
 	AdminPassword string
 	AllowOrigins  []string
@@ -35,6 +37,7 @@ func Load() (Config, error) {
 			DSN:    getEnv("DB_DSN", "root:password@tcp(127.0.0.1:3306)/rainbow?charset=utf8mb4&parseTime=True&loc=Local"),
 		},
 		JWTSecret:     getEnv("JWT_SECRET", "replace_with_a_strong_secret"),
+		JWTExpiresIn:  getEnvInt64("JWT_EXPIRES_IN", 7200),
 		AdminUsername: getEnv("ADMIN_USERNAME", "admin"),
 		AdminPassword: getEnv("ADMIN_PASSWORD", "change_me"),
 		AllowOrigins:  splitAndTrim(getEnv("ALLOW_ORIGINS", "http://localhost:3000,http://localhost:5173")),
@@ -59,6 +62,9 @@ func (c Config) Validate() error {
 	}
 	if c.JWTSecret == "" {
 		return errors.New("JWT_SECRET is required")
+	}
+	if c.JWTExpiresIn <= 0 {
+		return errors.New("JWT_EXPIRES_IN must be greater than 0")
 	}
 	if c.AdminUsername == "" {
 		return errors.New("ADMIN_USERNAME is required")
@@ -88,6 +94,17 @@ func (c Config) Address() string {
 func getEnv(key, fallback string) string {
 	if value, ok := os.LookupEnv(key); ok && strings.TrimSpace(value) != "" {
 		return strings.TrimSpace(value)
+	}
+
+	return fallback
+}
+
+func getEnvInt64(key string, fallback int64) int64 {
+	if value, ok := os.LookupEnv(key); ok && strings.TrimSpace(value) != "" {
+		parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		if err == nil {
+			return parsed
+		}
 	}
 
 	return fallback

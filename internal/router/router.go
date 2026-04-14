@@ -9,8 +9,11 @@ import (
 	"gorm.io/gorm"
 
 	"rainbow-backend/internal/config"
+	"rainbow-backend/internal/handler"
 	"rainbow-backend/internal/middleware"
 	"rainbow-backend/internal/model"
+	"rainbow-backend/internal/repo"
+	"rainbow-backend/internal/service"
 )
 
 func New(cfg config.Config, db *gorm.DB) *gin.Engine {
@@ -19,7 +22,18 @@ func New(cfg config.Config, db *gorm.DB) *gin.Engine {
 	engine.Use(middleware.Recovery())
 	engine.Use(middleware.CORS(cfg.AllowOrigins))
 
+	adminRepo := repo.NewAdminRepository(db)
+	tokenManager := service.NewTokenManager(cfg.JWTSecret, cfg.JWTExpiresIn)
+	authService := service.NewAuthService(adminRepo, tokenManager)
+	adminAuthHandler := handler.NewAdminAuthHandler(authService)
+
 	engine.GET("/health", healthHandler(cfg, db))
+
+	admin := engine.Group("/api/admin")
+	admin.POST("/login", adminAuthHandler.Login)
+
+	adminProtected := admin.Group("")
+	adminProtected.Use(middleware.JWTAuth(tokenManager))
 
 	return engine
 }
