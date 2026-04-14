@@ -1,0 +1,27 @@
+# binaries
+/bin/
+/dist/
+*.out
+
+# env
+.env
+.env.local
+
+# editor
+.vscode/
+.idea/
+
+# logs
+logs/
+*.log
+
+# OS
+.DS_Store
+
+# go
+vendor/
+
+# sqlite
+*.db
+*.sqlite
+*.sqlite3
