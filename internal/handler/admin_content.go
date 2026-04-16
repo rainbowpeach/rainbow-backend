@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -24,17 +25,20 @@ func NewAdminContentHandler(contentService *service.ContentService) *AdminConten
 func (h *AdminContentHandler) Create(c *gin.Context) {
 	var req model.ContentUpsertRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, model.ErrorResponse(model.CodeInvalidParams, "invalid params"))
+		log.Printf("admin content create invalid request %s ip=%s err=%v", adminActor(c), c.ClientIP(), err)
+		model.WriteError(c, http.StatusBadRequest, model.CodeInvalidParams, "invalid params")
 		return
 	}
 
 	result, err := h.contentService.Create(c.Request.Context(), &req)
 	if err != nil {
+		log.Printf("admin content create failed %s ip=%s date=%s err=%v", adminActor(c), c.ClientIP(), req.Date, err)
 		h.respondContentError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, model.SuccessResponse(result))
+	log.Printf("admin content created %s ip=%s content_id=%d date=%s", adminActor(c), c.ClientIP(), result.ID, req.Date)
+	model.WriteOK(c, result)
 }
 
 func (h *AdminContentHandler) Update(c *gin.Context) {
@@ -45,17 +49,20 @@ func (h *AdminContentHandler) Update(c *gin.Context) {
 
 	var req model.ContentUpsertRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, model.ErrorResponse(model.CodeInvalidParams, "invalid params"))
+		log.Printf("admin content update invalid request %s ip=%s content_id=%d err=%v", adminActor(c), c.ClientIP(), id, err)
+		model.WriteError(c, http.StatusBadRequest, model.CodeInvalidParams, "invalid params")
 		return
 	}
 
 	result, err := h.contentService.Update(c.Request.Context(), id, &req)
 	if err != nil {
+		log.Printf("admin content update failed %s ip=%s content_id=%d date=%s err=%v", adminActor(c), c.ClientIP(), id, req.Date, err)
 		h.respondContentError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, model.SuccessResponse(result))
+	log.Printf("admin content updated %s ip=%s content_id=%d date=%s", adminActor(c), c.ClientIP(), result.ID, req.Date)
+	model.WriteOK(c, result)
 }
 
 func (h *AdminContentHandler) Delete(c *gin.Context) {
@@ -66,39 +73,45 @@ func (h *AdminContentHandler) Delete(c *gin.Context) {
 
 	result, err := h.contentService.Delete(c.Request.Context(), id)
 	if err != nil {
+		log.Printf("admin content delete failed %s ip=%s content_id=%d err=%v", adminActor(c), c.ClientIP(), id, err)
 		h.respondContentError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, model.SuccessResponse(result))
+	log.Printf("admin content deleted %s ip=%s content_id=%d", adminActor(c), c.ClientIP(), result.ID)
+	model.WriteOK(c, result)
 }
 
 func (h *AdminContentHandler) List(c *gin.Context) {
 	var req model.ContentListRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		c.JSON(http.StatusBadRequest, model.ErrorResponse(model.CodeInvalidParams, "invalid params"))
+		log.Printf("admin content list invalid query %s ip=%s err=%v", adminActor(c), c.ClientIP(), err)
+		model.WriteError(c, http.StatusBadRequest, model.CodeInvalidParams, "invalid params")
 		return
 	}
 
 	result, err := h.contentService.List(c.Request.Context(), req.Page, req.PageSize)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, model.ErrorResponse(model.CodeInternalServerError, "internal server error"))
+		log.Printf("admin content list failed %s ip=%s page=%d page_size=%d err=%v", adminActor(c), c.ClientIP(), req.Page, req.PageSize, err)
+		model.WriteError(c, http.StatusInternalServerError, model.CodeInternalServerError, "internal server error")
 		return
 	}
 
-	c.JSON(http.StatusOK, model.SuccessResponse(result))
+	model.WriteOK(c, result)
 }
 
 func (h *AdminContentHandler) respondContentError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, service.ErrInvalidContentParams):
+		model.WriteError(c, http.StatusBadRequest, model.CodeInvalidParams, "invalid params")
 	case errors.Is(err, service.ErrInvalidDateFormat):
-		c.JSON(http.StatusBadRequest, model.ErrorResponse(model.CodeInvalidDateFormat, "invalid date format"))
+		model.WriteError(c, http.StatusBadRequest, model.CodeInvalidDateFormat, "invalid date format")
 	case errors.Is(err, service.ErrDuplicateDate):
-		c.JSON(http.StatusBadRequest, model.ErrorResponse(model.CodeDuplicateDate, "duplicate date"))
+		model.WriteError(c, http.StatusBadRequest, model.CodeDuplicateDate, "duplicate date")
 	case errors.Is(err, service.ErrContentNotFound):
-		c.JSON(http.StatusNotFound, model.ErrorResponse(model.CodeContentNotFound, "content not found"))
+		model.WriteError(c, http.StatusNotFound, model.CodeContentNotFound, "content not found")
 	default:
-		c.JSON(http.StatusInternalServerError, model.ErrorResponse(model.CodeInternalServerError, "internal server error"))
+		model.WriteError(c, http.StatusInternalServerError, model.CodeInternalServerError, "internal server error")
 	}
 }
 
@@ -106,7 +119,8 @@ func parseUintParam(c *gin.Context, key string) (uint, bool) {
 	value := c.Param(key)
 	id, err := strconv.ParseUint(value, 10, 64)
 	if err != nil || id == 0 {
-		c.JSON(http.StatusBadRequest, model.ErrorResponse(model.CodeInvalidParams, "invalid params"))
+		log.Printf("invalid uint param key=%s value=%q ip=%s path=%s", key, value, c.ClientIP(), c.Request.URL.Path)
+		model.WriteError(c, http.StatusBadRequest, model.CodeInvalidParams, "invalid params")
 		return 0, false
 	}
 

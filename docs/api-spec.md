@@ -481,6 +481,106 @@ Authorization: Bearer <token>
 
 ---
 
+### 6.6 上传背景图片
+
+#### 接口说明
+
+后台上传图片文件，返回可直接写入 `bg_url` 的公开访问地址。
+
+#### 请求信息
+
+- **请求路径**：`POST /api/admin/upload/image`
+- **请求方式**：`POST`
+- **是否鉴权**：是
+- **Content-Type**：`multipart/form-data`
+
+#### Form 参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---:|---|
+| file | file | 是 | 图片文件 |
+
+#### 请求示例
+
+```http
+POST /api/admin/upload/image
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+```
+
+#### 成功响应示例
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "url": "http://<public-ip>:18080/static/images/20260415093015-ab12cd34.png",
+    "filename": "20260415093015-ab12cd34.png",
+    "size": 12345,
+    "contentType": "image/png"
+  }
+}
+```
+
+#### 业务说明
+
+- 支持格式：`.jpg`、`.jpeg`、`.png`、`.webp`
+- 默认最大文件大小：`50 MB`
+- 返回的 `url` 可直接作为内容新增或修改接口中的 `bg_url`
+
+---
+
+### 6.7 上传背景音乐
+
+#### 接口说明
+
+后台上传音频文件，返回可直接写入 `music` 的公开访问地址。
+
+#### 请求信息
+
+- **请求路径**：`POST /api/admin/upload/audio`
+- **请求方式**：`POST`
+- **是否鉴权**：是
+- **Content-Type**：`multipart/form-data`
+
+#### Form 参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---:|---|
+| file | file | 是 | 音频文件 |
+
+#### 请求示例
+
+```http
+POST /api/admin/upload/audio
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+```
+
+#### 成功响应示例
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "url": "http://<public-ip>:18080/static/audio/20260415093015-ab12cd34.mp3",
+    "filename": "20260415093015-ab12cd34.mp3",
+    "size": 456789,
+    "contentType": "audio/mpeg"
+  }
+}
+```
+
+#### 业务说明
+
+- 支持格式：`.mp3`、`.wav`、`.ogg`、`.m4a`
+- 默认最大文件大小：`50 MB`
+- 返回的 `url` 可直接作为内容新增或修改接口中的 `music`
+
+---
+
 ## 7. 参数校验规则
 
 ### 7.1 date
@@ -520,6 +620,15 @@ Authorization: Bearer <token>
 - `page >= 1`
 - `pageSize >= 1`
 - 建议 `pageSize <= 100`
+
+### 7.7 upload file
+
+- `file` 为必填
+- 不允许空文件
+- 文件扩展名和文件内容类型都必须在允许范围内
+- 图片默认大小限制为 `50 MB`
+- 音频默认大小限制为 `50 MB`
+- 上传成功后返回的公开 URL 可直接写入 `bg_url` 或 `music`
 
 ---
 
@@ -615,4 +724,3 @@ GET /api/public/content?date=2026-04-07
 当前版本：`v1`
 
 如后续接口发生变更，应同步更新本文档，并以本文档作为联调基准。
-

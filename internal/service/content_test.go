@@ -159,6 +159,41 @@ func TestContentServiceCreateDuplicateDate(t *testing.T) {
 	}
 }
 
+func TestContentServiceCreateRejectsBlankFields(t *testing.T) {
+	repo := &stubContentRepo{}
+	service := NewContentService(repo)
+
+	_, err := service.Create(context.Background(), &model.ContentUpsertRequest{
+		Date:  "2026-04-14",
+		Text:  "   ",
+		Tags:  []string{"心动"},
+		BgURL: "https://example.com/bg.jpg",
+		Music: "https://example.com/music.mp3",
+	})
+	if !errors.Is(err, ErrInvalidContentParams) {
+		t.Fatalf("expected ErrInvalidContentParams, got %v", err)
+	}
+	if repo.created != nil {
+		t.Fatal("expected repo create not to be called")
+	}
+}
+
+func TestContentServiceCreateRejectsBlankTags(t *testing.T) {
+	repo := &stubContentRepo{}
+	service := NewContentService(repo)
+
+	_, err := service.Create(context.Background(), &model.ContentUpsertRequest{
+		Date:  "2026-04-14",
+		Text:  "hello",
+		Tags:  []string{" ", "温柔"},
+		BgURL: "https://example.com/bg.jpg",
+		Music: "https://example.com/music.mp3",
+	})
+	if !errors.Is(err, ErrInvalidContentParams) {
+		t.Fatalf("expected ErrInvalidContentParams, got %v", err)
+	}
+}
+
 func TestContentServiceUpdateNotFound(t *testing.T) {
 	service := NewContentService(&stubContentRepo{updateErr: gorm.ErrRecordNotFound})
 

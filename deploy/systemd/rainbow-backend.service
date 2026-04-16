@@ -1,0 +1,22 @@
+[Unit]
+Description=Rainbow Backend Service
+After=network.target mysql.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/rainbow-backend
+EnvironmentFile=/opt/rainbow-backend/.env
+Environment=APP_ENV=prod
+Environment=HOST=127.0.0.1
+Environment=PORT=8080
+ExecStart=/opt/rainbow-backend/bin/rainbow-backend
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

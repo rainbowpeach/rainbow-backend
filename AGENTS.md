@@ -30,8 +30,7 @@ Admin side:
 - Go 1.22+
 - Gin
 - GORM
-- SQLite for local/dev
-- MySQL for prod
+- MySQL
 - JWT for admin auth
 
 ## Repo layout

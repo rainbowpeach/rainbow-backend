@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"rainbow-backend/internal/config"
+	"rainbow-backend/internal/logger"
 	"rainbow-backend/internal/model"
 	"rainbow-backend/internal/router"
 )
@@ -20,6 +21,16 @@ func main() {
 	}
 
 	gin.SetMode(cfg.GinMode())
+
+	logRuntime, err := logger.Setup(cfg.Log)
+	if err != nil {
+		log.Fatalf("setup logger: %v", err)
+	}
+	defer func() {
+		if closeErr := logRuntime.Close(); closeErr != nil {
+			log.Printf("close logger: %v", closeErr)
+		}
+	}()
 
 	db, err := model.OpenDB(cfg.Database)
 	if err != nil {
@@ -41,6 +52,12 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
+	log.Printf(
+		"logger initialized env=%s access_log=%s app_log=%s",
+		cfg.AppEnv,
+		logRuntime.AccessLogPath,
+		logRuntime.AppLogPath,
+	)
 	log.Printf("server listening on %s", cfg.Address())
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("server stopped: %v", err)

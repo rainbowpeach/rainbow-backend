@@ -9,16 +9,19 @@ import (
 
 func CORS(allowOrigins []string) gin.HandlerFunc {
 	allowed := make(map[string]struct{}, len(allowOrigins))
-	allowAll := len(allowOrigins) == 0
+	allowWildcard := false
 	for _, origin := range allowOrigins {
+		if origin == "*" {
+			allowWildcard = true
+		}
 		allowed[origin] = struct{}{}
 	}
 
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
 		if origin != "" {
-			if allowAll {
-				c.Header("Access-Control-Allow-Origin", origin)
+			if allowWildcard {
+				c.Header("Access-Control-Allow-Origin", "*")
 			} else if _, ok := allowed[origin]; ok {
 				c.Header("Access-Control-Allow-Origin", origin)
 			}

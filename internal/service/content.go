@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	gmysql "github.com/go-sql-driver/mysql"
@@ -16,6 +17,7 @@ import (
 var ErrInvalidDateFormat = errors.New("invalid date format")
 var ErrContentNotFound = errors.New("content not found")
 var ErrDuplicateDate = errors.New("duplicate date")
+var ErrInvalidContentParams = errors.New("invalid content params")
 
 type ContentService struct {
 	contentRepo repo.ContentRepository
@@ -44,7 +46,7 @@ func (s *ContentService) GetByDate(ctx context.Context, date string) (*model.Con
 }
 
 func (s *ContentService) Create(ctx context.Context, req *model.ContentUpsertRequest) (*model.IDResponse, error) {
-	if err := validateDate(req.Date); err != nil {
+	if err := validateContentUpsert(req); err != nil {
 		return nil, err
 	}
 
@@ -66,7 +68,7 @@ func (s *ContentService) Create(ctx context.Context, req *model.ContentUpsertReq
 }
 
 func (s *ContentService) Update(ctx context.Context, id uint, req *model.ContentUpsertRequest) (*model.IDResponse, error) {
-	if err := validateDate(req.Date); err != nil {
+	if err := validateContentUpsert(req); err != nil {
 		return nil, err
 	}
 
@@ -124,6 +126,27 @@ func (s *ContentService) List(ctx context.Context, page, pageSize int) (*model.C
 func validateDate(date string) error {
 	if _, err := time.Parse("2006-01-02", date); err != nil {
 		return ErrInvalidDateFormat
+	}
+	return nil
+}
+
+func validateContentUpsert(req *model.ContentUpsertRequest) error {
+	if req == nil {
+		return ErrInvalidContentParams
+	}
+	if err := validateDate(req.Date); err != nil {
+		return err
+	}
+	if strings.TrimSpace(req.Text) == "" || strings.TrimSpace(req.BgURL) == "" || strings.TrimSpace(req.Music) == "" {
+		return ErrInvalidContentParams
+	}
+	if len(req.Tags) == 0 {
+		return ErrInvalidContentParams
+	}
+	for _, tag := range req.Tags {
+		if strings.TrimSpace(tag) == "" {
+			return ErrInvalidContentParams
+		}
 	}
 	return nil
 }

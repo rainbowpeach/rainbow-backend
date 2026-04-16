@@ -23,7 +23,7 @@ func NewPublicContentHandler(contentService *service.ContentService) *PublicCont
 func (h *PublicContentHandler) GetByDate(c *gin.Context) {
 	date := c.Query("date")
 	if date == "" {
-		c.JSON(http.StatusBadRequest, model.ErrorResponse(model.CodeInvalidParams, "invalid params"))
+		model.WriteError(c, http.StatusBadRequest, model.CodeInvalidParams, "invalid params")
 		return
 	}
 
@@ -31,14 +31,14 @@ func (h *PublicContentHandler) GetByDate(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidDateFormat):
-			c.JSON(http.StatusBadRequest, model.ErrorResponse(model.CodeInvalidDateFormat, "invalid date format"))
+			model.WriteError(c, http.StatusBadRequest, model.CodeInvalidDateFormat, "invalid date format")
 		case errors.Is(err, service.ErrContentNotFound):
-			c.JSON(http.StatusNotFound, model.ErrorResponse(model.CodeContentNotFound, "content not found"))
+			model.WriteError(c, http.StatusNotFound, model.CodeContentNotFound, "content not found")
 		default:
-			c.JSON(http.StatusInternalServerError, model.ErrorResponse(model.CodeInternalServerError, "internal server error"))
+			model.WriteError(c, http.StatusInternalServerError, model.CodeInternalServerError, "internal server error")
 		}
 		return
 	}
 
-	c.JSON(http.StatusOK, model.SuccessResponse(result))
+	model.WriteOK(c, result)
 }

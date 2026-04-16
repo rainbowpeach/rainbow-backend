@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -21,7 +22,8 @@ func NewAdminAuthHandler(authService *service.AuthService) *AdminAuthHandler {
 func (h *AdminAuthHandler) Login(c *gin.Context) {
 	var req model.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, model.ErrorResponse(model.CodeInvalidParams, "invalid params"))
+		log.Printf("admin login request invalid ip=%s err=%v", c.ClientIP(), err)
+		model.WriteError(c, http.StatusBadRequest, model.CodeInvalidParams, "invalid params")
 		return
 	}
 
@@ -29,12 +31,15 @@ func (h *AdminAuthHandler) Login(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrUnauthorized):
-			c.JSON(http.StatusUnauthorized, model.ErrorResponse(model.CodeUnauthorized, "unauthorized"))
+			log.Printf("admin login failed username=%q ip=%s", req.Username, c.ClientIP())
+			model.WriteError(c, http.StatusUnauthorized, model.CodeUnauthorized, "unauthorized")
 		default:
-			c.JSON(http.StatusInternalServerError, model.ErrorResponse(model.CodeInternalServerError, "internal server error"))
+			log.Printf("admin login internal error username=%q ip=%s err=%v", req.Username, c.ClientIP(), err)
+			model.WriteError(c, http.StatusInternalServerError, model.CodeInternalServerError, "internal server error")
 		}
 		return
 	}
 
-	c.JSON(http.StatusOK, model.SuccessResponse(result))
+	log.Printf("admin login succeeded username=%q ip=%s", req.Username, c.ClientIP())
+	model.WriteOK(c, result)
 }
