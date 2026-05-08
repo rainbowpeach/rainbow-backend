@@ -1,40 +1,56 @@
-# 彩虹屁项目 API 规格说明
+# Rainbow Backend API Spec
 
-## 1. 文档概述
+## 1. Overview
 
-本文档定义“彩虹屁”项目的前后端接口规范，用于支持：
+This backend serves:
 
-- H5 落地页内容展示
-- 后台管理系统内容维护
+- public H5 content queries
+- public scene page config queries
+- admin login
+- scene-aware content CRUD
+- host to scene mapping CRUD
+- scene page config CRUD
+- image and audio upload
 
-本文档是前后端联调、后端开发、接口测试的统一依据。
+For this design, the business feature relies on three business tables:
 
----
+- `scene_domains`
+- `scene_page_configs`
+- `content_items`
 
-## 2. 基本约定
+There is no `scenes` table in this version.
 
-### 2.1 数据传输格式
+Public requests resolve `scene_code` dynamically from the incoming HTTP `Host` header by querying `scene_domains`.
 
-- 请求体与响应体统一使用 `application/json`
-- 字符编码统一为 `UTF-8`
+Example mappings:
 
-### 2.2 时间格式
+- `love.example.com` -> `love`
+- `sweet.example.com` -> `sweet`
 
-所有日期字段统一使用以下格式：
+## 2. Common Rules
+
+### 2.1 Content Type
+
+- request and response bodies use `application/json`
+- character encoding uses `UTF-8`
+
+### 2.2 Date Format
+
+All `date` fields use:
 
 ```text
 YYYY-MM-DD
 ```
 
-例如：
+Example:
 
 ```text
 2026-04-07
 ```
 
-### 2.3 通用响应结构
+### 2.3 Response Envelope
 
-后端建议统一返回如下 JSON 结构：
+All APIs return the stable JSON envelope:
 
 ```json
 {
@@ -44,104 +60,178 @@ YYYY-MM-DD
 }
 ```
 
-字段说明：
+### 2.4 Field Rules
 
-| 字段名 | 类型 | 说明 |
+- use `bg_url` as the only background image field
+- do not use `bg`
+- `tags` must be a string array
+- `tags_default` must be a string array in API responses
+- `date` must use `YYYY-MM-DD`
+- for admin content create, `scene_code` and `date` are required; `text`, `tags`, `bg_url`, and `music` are optional
+- for admin content update, `scene_code` and `date` stay required in the current API; `text`, `tags`, `bg_url`, and `music` are optional
+- `scene_code` is required for scene page config create and update
+- use `tags_default`, not `tags_dafult`
+- `logo`, `banner`, `bac_img`, `default_bg_url`, and `default_music` are URL fields stored as strings
+- `logo`, `banner`, `bac_img`, `default_bg_url`, and `default_music` must not store binary image or audio data
+
+### 2.5 Suggested Error Codes
+
+| code | message | meaning |
 |---|---|---|
-| code | number | 业务状态码，`0` 表示成功，非 `0` 表示失败 |
-| message | string | 响应消息 |
-| data | object/null | 具体返回数据 |
+| 0 | ok | success |
+| 40001 | invalid params | request parameters are invalid |
+| 40002 | invalid date format | `date` format is invalid |
+| 40003 | content not found | content record not found |
+| 40004 | unauthorized | login required or token invalid |
+| 40005 | forbidden | no permission |
+| 40006 | duplicate date | duplicate `(scene_code, date)` content |
+| 40007 | duplicate host | duplicate `scene_domains.host` |
+| 40009 | scene domain not found | host mapping not found |
+| 40010 | duplicate scene_code | duplicate `scene_page_configs.scene_code` |
+| 40011 | scene page config not found | page config record not found |
+| 50000 | internal server error | server error |
 
-### 2.5 通用错误码建议
+## 3. Data Models
 
-| code | message | 说明 |
-|---|---|---|
-| 0 | ok | 请求成功 |
-| 40001 | invalid params | 请求参数错误 |
-| 40002 | invalid date format | 日期格式错误 |
-| 40003 | content not found | 内容不存在 |
-| 40004 | unauthorized | 未登录或认证失败 |
-| 40005 | forbidden | 无权限访问 |
-| 40006 | duplicate date | 该日期内容已存在 |
-| 50000 | internal server error | 服务器内部错误 |
-
----
-
-## 3. 数据模型定义
-
-### 3.1 内容对象 ContentItem
+### 3.1 ContentItem
 
 ```json
 {
   "id": 1,
+  "scene_code": "love",
   "date": "2026-04-07",
-  "text": "111",
-  "tags": ["心动", "温柔", "春天"],
-  "bg_url": "xxx",
-  "music": "xxx",
+  "text": "Today is a good day.",
+  "tags": ["warm", "spring", "joy"],
+  "bg_url": "https://love.example.com/static/love/images/demo.png",
+  "music": "https://love.example.com/static/love/audio/demo.mp3",
   "createdAt": "2026-04-07",
   "updatedAt": "2026-04-07"
 }
 ```
 
-字段说明：
-
-| 字段名 | 类型 | 必填 | 说明 |
+| field | type | required | meaning |
 |---|---|---:|---|
-| id | number | 是 | 内容主键 ID |
-| date | string | 是 | 对应展示日期，格式为 `YYYY-MM-DD` |
-| text | string | 是 | 页面文案展示内容 |
-| tags | array[string] | 是 | 标签数组，前端渲染时每个 tag 前需加 `#` |
-| bg_url | string | 是 | 页面背景图片地址 |
-| music | string | 是 | 页面背景音乐地址 |
-| createdAt | string | 否 | 数据创建日期 |
-| updatedAt | string | 否 | 数据修改日期 |
+| id | number | yes | content ID |
+| scene_code | string | yes | scene identifier |
+| date | string | yes | display date |
+| text | string | no | content text |
+| tags | array[string] | no | tag list |
+| bg_url | string | no | background image URL |
+| music | string | no | background music URL |
+| createdAt | string | no | creation date |
+| updatedAt | string | no | update date |
 
----
+Constraints:
 
-## 4. 认证说明
+- `scene_code` is required
+- `(scene_code, date)` must be unique
+- empty `text`, `tags`, `bg_url`, and `music` values are allowed
+- existing legacy rows are backfilled to `scene_code=default`
 
-后台管理接口需要登录认证。
+### 3.2 SceneDomain
 
-建议认证方式如下：
+```json
+{
+  "host": "love.example.com",
+  "scene_code": "love"
+}
+```
 
-- 登录成功后返回 `token`
-- 后续后台接口通过请求头携带认证信息：
+Rules:
+
+- `host` uniquely maps to one `scene_code`
+- `host` must be unique
+- `scene_code` must be non-empty
+- `scene_domains` is the only source of truth for host to scene mapping
+
+### 3.3 ScenePageConfig
+
+```json
+{
+  "scene_code": "love",
+  "logo": "/static/love/images/logo_xxx.png",
+  "banner": "/static/love/images/banner_xxx.png",
+  "bac_img": "/static/love/images/bg_xxx.jpg",
+  "default_bg_url": "/static/love/images/default_bg_xxx.jpg",
+  "default_music": "/static/love/audio/default_music_xxx.mp3",
+  "text_default": "今天也是值得被温柔对待的一天。",
+  "tags_default": ["心动", "温柔", "春天"],
+  "play_button_color": "#1a2b3c",
+  "text_default_color": "#1a2b3c",
+  "tags_color": "#1a2b3c",
+  "tags_bac_color": "#ffffff",
+  "date_color": "#1a2b3c"
+}
+```
+
+Suggested MySQL fields:
+
+- `scene_code VARCHAR(128) PRIMARY KEY`
+- `logo VARCHAR(1024)`
+- `banner VARCHAR(1024)`
+- `bac_img VARCHAR(1024)`
+- `default_bg_url VARCHAR(1024)`
+- `default_music VARCHAR(1024)`
+- `text_default TEXT`
+- `tags_default JSON`
+- `play_button_color VARCHAR(32)`
+- `text_default_color VARCHAR(32)`
+- `tags_color VARCHAR(32)`
+- `tags_bac_color VARCHAR(32)`
+- `date_color VARCHAR(32)`
+- `created_at DATETIME`
+- `updated_at DATETIME`
+
+Rules:
+
+- `scene_code` is required and unique
+- `scene_code` is the primary key
+- `logo`, `banner`, `bac_img`, `default_bg_url`, and `default_music` are URL fields stored as strings
+- the database stores URL/path strings only, never image binary data
+- `tags_default` is stored as JSON in MySQL and returned as `array[string]`
+- color fields must be valid hex color strings when non-empty
+- scene page config image/audio fields are populated through the upload APIs before being saved
+
+## 4. Auth
+
+Admin APIs require:
 
 ```http
 Authorization: Bearer <token>
 ```
 
-用户名和密码由后台预先创建，不提供注册接口。
+Only `POST /api/admin/login` is public under `/api/admin`.
 
----
+## 5. Public APIs
 
-## 5. H5 落地页接口
+### 5.1 Get Public Content
 
-### 5.1 获取指定日期内容
+- Path: `GET /api/public/content`
+- Purpose: get content by `date`; scene is resolved from `Host`
 
-#### 接口说明
+Query parameters:
 
-根据日期获取 H5 页面展示内容。
-
-#### 请求信息
-
-- **请求路径**：`GET /api/public/content`
-- **请求方式**：`GET`
-
-#### Query 参数
-
-| 参数名 | 类型 | 必填 | 说明 |
+| name | type | required | meaning |
 |---|---|---:|---|
-| date | string | 是 | 日期，格式 `YYYY-MM-DD` |
+| date | string | yes | content date |
+| scene | string | no | debug override only when backend config enables it |
 
-#### 请求示例
+Host resolution behavior:
+
+1. read the request `Host`
+2. strip the port if present
+3. query `scene_domains.host`
+4. if a mapping exists, use its `scene_code`
+5. if no mapping exists, return a clear not-configured error
+
+Example request:
 
 ```http
 GET /api/public/content?date=2026-04-07
+Host: love.example.com
 ```
 
-#### 成功响应示例
+Success example:
 
 ```json
 {
@@ -149,56 +239,131 @@ GET /api/public/content?date=2026-04-07
   "message": "ok",
   "data": {
     "id": 1,
+    "scene_code": "love",
     "date": "2026-04-07",
-    "text": "111",
-    "tags": ["心动", "温柔", "春天"],
-    "bg_url": "xxx",
-    "music": "xxx",
+    "text": "Today is a good day.",
+    "tags": ["warm", "spring", "joy"],
+    "bg_url": "https://love.example.com/static/love/images/demo.png",
+    "music": "https://love.example.com/static/love/audio/demo.mp3",
     "createdAt": "2026-04-07",
     "updatedAt": "2026-04-07"
   }
 }
 ```
 
-#### 失败响应示例
+Host not configured example:
 
 ```json
 {
-  "code": 40003,
-  "message": "content not found",
+  "code": 40009,
+  "message": "scene not configured",
   "data": null
 }
 ```
 
-#### 业务说明
+### 5.2 Get Current Scene-Domain Mapping
 
-- 前端拿到 `tags` 后，展示时每个 tag 前添加 `#`
-- 若指定日期无内容，返回“数据不存在”
-- 建议一个日期只对应一条内容记录
+- Path: `GET /api/public/scene-domain-mapping`
+- Purpose: inspect the current host resolution result
 
----
+Example request:
 
-## 6. 后台管理接口
+```http
+GET /api/public/scene-domain-mapping
+Host: sweet.example.com
+```
 
-### 6.1 后台登录
+Success example:
 
-#### 接口说明
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "host": "sweet.example.com",
+    "scene_code": "sweet"
+  }
+}
+```
 
-后台管理员登录接口。
+### 5.3 Get Current Scene Page Config
 
-#### 请求信息
+- Path: `GET /api/public/scene-page-config`
+- Purpose: resolve `scene_code` from `Host` and return the scene page config
 
-- **请求路径**：`POST /api/admin/login`
-- **请求方式**：`POST`
+Behavior:
 
-#### 请求体参数
+1. read `Host` from the request
+2. resolve `scene_code` through `scene_domains`
+3. query `scene_page_configs` by `scene_code`
+4. return the current scene page config
+5. if no scene mapping exists, return a clear JSON error
+6. if scene mapping exists but no page config exists, return a clear JSON not-found error
 
-| 参数名 | 类型 | 必填 | 说明 |
-|---|---|---:|---|
-| username | string | 是 | 后台账号 |
-| password | string | 是 | 后台密码 |
+Success example:
 
-#### 请求示例
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "scene_code": "love",
+    "logo": "/static/love/images/logo_xxx.png",
+    "banner": "/static/love/images/banner_xxx.png",
+    "bac_img": "/static/love/images/bg_xxx.jpg",
+    "default_bg_url": "/static/love/images/default_bg_xxx.jpg",
+    "default_music": "/static/love/audio/default_music_xxx.mp3",
+    "text_default": "今天也是值得被温柔对待的一天。",
+    "tags_default": ["心动", "温柔", "春天"],
+    "play_button_color": "#1a2b3c",
+    "text_default_color": "#1a2b3c",
+    "tags_color": "#1a2b3c",
+    "tags_bac_color": "#ffffff",
+    "date_color": "#1a2b3c"
+  }
+}
+```
+
+Scene page config not found example:
+
+```json
+{
+  "code": 40011,
+  "message": "scene page config not found",
+  "data": null
+}
+```
+
+### 5.4 Public Fallback Logic For H5
+
+H5 should request both:
+
+- `GET /api/public/scene-page-config`
+- `GET /api/public/content?date=YYYY-MM-DD`
+
+`GET /api/public/content` returns the raw `content_items` row for the date. It does not merge `scene_page_configs` fallback values into `text`, `tags`, `bg_url`, or `music`.
+
+Rendering rules:
+
+1. `logo` comes from `scene_page_configs.logo`
+2. `banner` comes from `scene_page_configs.banner`
+3. background image uses `content_items.bg_url` first when non-empty, then `scene_page_configs.bac_img`, then `scene_page_configs.default_bg_url`, then the existing hardcoded H5 fallback
+4. music uses `content_items.music` first when non-empty, then `scene_page_configs.default_music`, then the existing hardcoded H5 fallback
+5. text uses `content_items.text` first when non-empty, then `scene_page_configs.text_default`, then the existing hardcoded H5 fallback
+6. tags use `content_items.tags` first when non-empty, then `scene_page_configs.tags_default`, then the existing hardcoded H5 fallback
+7. play button color comes from `scene_page_configs.play_button_color`
+8. default text color comes from `scene_page_configs.text_default_color`
+9. tags font color comes from `scene_page_configs.tags_color`
+10. tags background color comes from `scene_page_configs.tags_bac_color`
+11. date color comes from `scene_page_configs.date_color`
+
+## 6. Admin APIs
+
+### 6.1 Admin Login
+
+- Path: `POST /api/admin/login`
+
+Request body:
 
 ```json
 {
@@ -207,7 +372,7 @@ GET /api/public/content?date=2026-04-07
 }
 ```
 
-#### 成功响应示例
+Success response:
 
 ```json
 {
@@ -220,233 +385,140 @@ GET /api/public/content?date=2026-04-07
 }
 ```
 
-#### 失败响应示例
+### 6.2 Create Content
+
+- Path: `POST /api/admin/content`
+- Auth required: yes
+
+Field requirements:
+
+| field | required | notes |
+|---|---:|---|
+| scene_code | yes | scene identifier |
+| date | yes | must use `YYYY-MM-DD` |
+| text | no | empty or missing value falls back on H5 |
+| tags | no | if provided, must be an array of strings; `[]` is allowed |
+| bg_url | no | empty string is allowed |
+| music | no | empty string is allowed |
+
+Request body:
 
 ```json
 {
-  "code": 40004,
-  "message": "unauthorized",
-  "data": null
+  "scene_code": "love",
+  "date": "2026-04-07"
 }
 ```
 
----
-
-### 6.2 新增内容
-
-#### 接口说明
-
-新增一条页面内容数据。
-
-#### 请求信息
-
-- **请求路径**：`POST /api/admin/content`
-- **请求方式**：`POST`
-- **是否鉴权**：是
-
-#### 请求头
-
-```http
-Authorization: Bearer <token>
-Content-Type: application/json
-```
-
-#### 请求体参数
-
-| 参数名 | 类型 | 必填 | 说明 |
-|---|---|---:|---|
-| date | string | 是 | 日期，格式 `YYYY-MM-DD` |
-| text | string | 是 | 页面文案展示 |
-| tags | array[string] | 是 | 标签数组 |
-| bg_url | string | 是 | 背景图片地址 |
-| music | string | 是 | 背景音乐地址 |
-
-#### 请求示例
+Partial create example:
 
 ```json
 {
+  "scene_code": "love",
   "date": "2026-04-07",
-  "text": "111",
-  "tags": ["甜", "恋爱"],
-  "bg_url": "xxx",
-  "music": "xxx"
+  "text": "Today is a good day."
 }
 ```
 
-#### 成功响应示例
+### 6.3 Update Content
 
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "id": 1
-  }
-}
-```
+- Path: `PUT /api/admin/content/:id`
+- Auth required: yes
 
-#### 失败响应示例
+Request body is the same as create. In the current API, `scene_code` and `date` are still required for update, while `text`, `tags`, `bg_url`, and `music` stay optional.
 
-```json
-{
-  "code": 40006,
-  "message": "duplicate date",
-  "data": null
-}
-```
+Empty optional fields on create or update use the public H5 fallback order from `scene_page_configs` values before the existing hardcoded H5 fallback.
 
-#### 业务说明
+### 6.4 Delete Content
 
-- `date` 建议全局唯一
-- `tags` 必须为字符串数组
-- 新增时统一使用 `bg_url`
+- Path: `DELETE /api/admin/content/:id`
+- Auth required: yes
 
----
+### 6.5 List Content
 
-### 6.3 修改内容
+- Path: `GET /api/admin/content`
+- Auth required: yes
 
-#### 接口说明
+Query parameters:
 
-根据 ID 修改一条页面内容数据。
-
-#### 请求信息
-
-- **请求路径**：`PUT /api/admin/content/:id`
-- **请求方式**：`PUT`
-- **是否鉴权**：是
-
-#### Path 参数
-
-| 参数名 | 类型 | 必填 | 说明 |
+| name | type | required | meaning |
 |---|---|---:|---|
-| id | number | 是 | 内容 ID |
+| page | number | yes | page number, starts at 1 |
+| pageSize | number | yes | page size |
+| scene | string | no | filter by `scene_code` |
+| date | string | no | filter by date |
 
-#### 请求体参数
+### 6.6 List Scene-Domain Mappings
 
-| 参数名 | 类型 | 必填 | 说明 |
+- Path: `GET /api/admin/scene-domains`
+- Auth required: yes
+
+Query parameters:
+
+| name | type | required | meaning |
 |---|---|---:|---|
-| date | string | 是 | 日期，格式 `YYYY-MM-DD` |
-| text | string | 是 | 页面文案展示 |
-| tags | array[string] | 是 | 标签数组 |
-| bg_url | string | 是 | 背景图片地址 |
-| music | string | 是 | 背景音乐地址 |
+| page | number | no | default `1` |
+| pageSize | number | no | default `10`, max `100` |
+| host | string | no | fuzzy host filter |
+| scene | string | no | exact `scene_code` filter |
 
-#### 请求示例
+### 6.7 Get Scene-Domain Mapping Detail
 
-```http
-PUT /api/admin/content/1
-```
+- Path: `GET /api/admin/scene-domains/:host`
+- Auth required: yes
 
-```json
-{
-  "date": "2026-04-07",
-  "text": "111",
-  "tags": ["甜", "恋爱"],
-  "bg_url": "xxx",
-  "music": "xxx"
-}
-```
+### 6.8 Create Scene-Domain Mapping
 
-#### 成功响应示例
+- Path: `POST /api/admin/scene-domains`
+- Auth required: yes
+
+Request body:
 
 ```json
 {
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "id": 1
-  }
+  "host": "love.example.com",
+  "scene_code": "love"
 }
 ```
 
-#### 失败响应示例
+### 6.9 Update Scene-Domain Mapping
+
+- Path: `PUT /api/admin/scene-domains/:host`
+- Auth required: yes
+
+Request body:
 
 ```json
 {
-  "code": 40003,
-  "message": "content not found",
-  "data": null
+  "host": "sweet.example.com",
+  "scene_code": "sweet"
 }
 ```
 
----
+Notes:
 
-### 6.4 删除内容
+- request body `host` is optional on update
+- if `host` is omitted or blank, the service uses the `:host` path value
 
-#### 接口说明
+### 6.10 Delete Scene-Domain Mapping
 
-根据 ID 删除一条页面内容数据。
+- Path: `DELETE /api/admin/scene-domains/:host`
+- Auth required: yes
 
-#### 请求信息
+### 6.11 List Scene Page Configs
 
-- **请求路径**：`DELETE /api/admin/content/:id`
-- **请求方式**：`DELETE`
-- **是否鉴权**：是
+- Path: `GET /api/admin/scene-page-configs`
+- Auth required: yes
 
-#### Path 参数
+Query parameters:
 
-| 参数名 | 类型 | 必填 | 说明 |
+| name | type | required | meaning |
 |---|---|---:|---|
-| id | number | 是 | 内容 ID |
+| page | number | no | default `1` |
+| pageSize | number | no | default `10`, max `100` |
+| scene | string | no | exact `scene_code` filter |
 
-#### 请求示例
-
-```http
-DELETE /api/admin/content/1
-Authorization: Bearer <token>
-```
-
-#### 成功响应示例
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "id": 1
-  }
-}
-```
-
-#### 失败响应示例
-
-```json
-{
-  "code": 40003,
-  "message": "content not found",
-  "data": null
-}
-```
-
----
-
-### 6.5 分页获取内容列表
-
-#### 接口说明
-
-后台分页获取内容列表，用于管理页面展示。
-
-#### 请求信息
-
-- **请求路径**：`GET /api/admin/content`
-- **请求方式**：`GET`
-- **是否鉴权**：是
-
-#### Query 参数
-
-| 参数名 | 类型 | 必填 | 说明 |
-|---|---|---:|---|
-| page | number | 是 | 页码，从 1 开始 |
-| pageSize | number | 是 | 每页数量 |
-
-#### 请求示例
-
-```http
-GET /api/admin/content?page=1&pageSize=10
-Authorization: Bearer <token>
-```
-
-#### 成功响应示例
+Success response example:
 
 ```json
 {
@@ -455,12 +527,19 @@ Authorization: Bearer <token>
   "data": {
     "list": [
       {
-        "id": 1,
-        "date": "2026-04-07",
-        "text": "111",
-        "tags": ["浪漫"],
-        "bg_url": "xxx",
-        "music": "xxx"
+        "scene_code": "love",
+        "logo": "/static/love/images/logo_xxx.png",
+        "banner": "/static/love/images/banner_xxx.png",
+        "bac_img": "/static/love/images/bg_xxx.jpg",
+        "default_bg_url": "/static/love/images/default_bg_xxx.jpg",
+        "default_music": "/static/love/audio/default_music_xxx.mp3",
+        "text_default": "今天也是值得被温柔对待的一天。",
+        "tags_default": ["心动", "温柔", "春天"],
+        "play_button_color": "#1a2b3c",
+        "text_default_color": "#1a2b3c",
+        "tags_color": "#1a2b3c",
+        "tags_bac_color": "#ffffff",
+        "date_color": "#1a2b3c"
       }
     ],
     "total": 1,
@@ -470,52 +549,98 @@ Authorization: Bearer <token>
 }
 ```
 
-#### 字段说明
+### 6.12 Get Scene Page Config Detail
 
-| 字段名 | 类型 | 说明 |
-|---|---|---|
-| list | array | 当前页数据列表 |
-| total | number | 总记录数 |
-| page | number | 当前页码 |
-| pageSize | number | 当前分页大小 |
+- Path: `GET /api/admin/scene-page-configs/:scene_code`
+- Auth required: yes
 
----
+### 6.13 Create Scene Page Config
 
-### 6.6 上传背景图片
+- Path: `POST /api/admin/scene-page-configs`
+- Auth required: yes
 
-#### 接口说明
+Request body:
 
-后台上传图片文件，返回可直接写入 `bg_url` 的公开访问地址。
-
-#### 请求信息
-
-- **请求路径**：`POST /api/admin/upload/image`
-- **请求方式**：`POST`
-- **是否鉴权**：是
-- **Content-Type**：`multipart/form-data`
-
-#### Form 参数
-
-| 参数名 | 类型 | 必填 | 说明 |
-|---|---|---:|---|
-| file | file | 是 | 图片文件 |
-
-#### 请求示例
-
-```http
-POST /api/admin/upload/image
-Authorization: Bearer <token>
-Content-Type: multipart/form-data
+```json
+{
+  "scene_code": "love",
+  "logo": "/static/love/images/logo_xxx.png",
+  "banner": "/static/love/images/banner_xxx.png",
+  "bac_img": "/static/love/images/bg_xxx.jpg",
+  "default_bg_url": "/static/love/images/default_bg_xxx.jpg",
+  "default_music": "/static/love/audio/default_music_xxx.mp3",
+  "text_default": "今天也是值得被温柔对待的一天。",
+  "tags_default": ["心动", "温柔", "春天"],
+  "play_button_color": "#1a2b3c",
+  "text_default_color": "#1a2b3c",
+  "tags_color": "#1a2b3c",
+  "tags_bac_color": "#ffffff",
+  "date_color": "#1a2b3c"
+}
 ```
 
-#### 成功响应示例
+Validation:
+
+- `scene_code` is required
+- `tags_default` must be a string array
+- color fields must be valid hex colors when non-empty
+- `logo`, `banner`, `bac_img`, `default_bg_url`, and `default_music` must be URL strings or static paths
+- create rejects duplicate `scene_code`
+- image binary data is not accepted in this API
+- audio binary data is not accepted in this API
+
+### 6.14 Update Scene Page Config
+
+- Path: `PUT /api/admin/scene-page-configs/:scene_code`
+- Auth required: yes
+
+Request body is the same as create.
+
+Notes:
+
+- the path `scene_code` identifies the record
+- if the body includes `scene_code`, it must match the path value
+- update returns a clear not-found error if the record does not exist
+- `default_bg_url` should be populated through `POST /api/admin/upload/image`
+- `default_music` should be populated through `POST /api/admin/upload/audio`
+
+### 6.15 Delete Scene Page Config
+
+- Path: `DELETE /api/admin/scene-page-configs/:scene_code`
+- Auth required: yes
+
+Delete returns a clear not-found error if the record does not exist.
+
+### 6.16 Upload Image
+
+- Path: `POST /api/admin/upload/image`
+- Auth required: yes
+- Content-Type: `multipart/form-data`
+
+Form fields:
+
+| name | type | required | meaning |
+|---|---|---:|---|
+| file | file | yes | image file |
+| scene_code | string | no | upload scene, defaults to `default` |
+
+Example:
+
+```bash
+curl -X POST 'https://admin.example.com/api/admin/upload/image' \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -F 'scene_code=love' \
+  -F 'file=@/absolute/path/to/logo.png'
+```
+
+Success response:
 
 ```json
 {
   "code": 0,
   "message": "ok",
   "data": {
-    "url": "http://<public-ip>:18080/static/images/20260415093015-ab12cd34.png",
+    "url": "/static/love/images/20260415093015-ab12cd34.png",
     "filename": "20260415093015-ab12cd34.png",
     "size": 12345,
     "contentType": "image/png"
@@ -523,204 +648,85 @@ Content-Type: multipart/form-data
 }
 ```
 
-#### 业务说明
+The returned `data.url` value is what admin should save into:
 
-- 支持格式：`.jpg`、`.jpeg`、`.png`、`.webp`
-- 默认最大文件大小：`50 MB`
-- 返回的 `url` 可直接作为内容新增或修改接口中的 `bg_url`
+- `scene_page_configs.logo`
+- `scene_page_configs.banner`
+- `scene_page_configs.bac_img`
+- `scene_page_configs.default_bg_url`
+- `content_items.bg_url`
 
----
+Storage layout:
 
-### 6.7 上传背景音乐
+- dev: `./uploads/dev/<scene_code>/images/`
+- test: `/opt/rainbow-backend/uploads/test/<scene_code>/images/`
+- prod: `/opt/rainbow-backend/uploads/prod/<scene_code>/images/`
 
-#### 接口说明
+### 6.17 Upload Audio
 
-后台上传音频文件，返回可直接写入 `music` 的公开访问地址。
+- Path: `POST /api/admin/upload/audio`
+- Auth required: yes
+- Content-Type: `multipart/form-data`
 
-#### 请求信息
+Form fields:
 
-- **请求路径**：`POST /api/admin/upload/audio`
-- **请求方式**：`POST`
-- **是否鉴权**：是
-- **Content-Type**：`multipart/form-data`
-
-#### Form 参数
-
-| 参数名 | 类型 | 必填 | 说明 |
+| name | type | required | meaning |
 |---|---|---:|---|
-| file | file | 是 | 音频文件 |
+| file | file | yes | audio file |
+| scene_code | string | no | upload scene, defaults to `default` |
 
-#### 请求示例
+The returned `data.url` value is what admin should save into:
 
-```http
-POST /api/admin/upload/audio
-Authorization: Bearer <token>
-Content-Type: multipart/form-data
-```
+- `scene_page_configs.default_music`
+- `content_items.music`
 
-#### 成功响应示例
+## 7. Frontend Integration Notes
 
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "url": "http://<public-ip>:18080/static/audio/20260415093015-ab12cd34.mp3",
-    "filename": "20260415093015-ab12cd34.mp3",
-    "size": 456789,
-    "contentType": "audio/mpeg"
-  }
-}
-```
+### 7.1 H5 Frontend
 
-#### 业务说明
+The H5 frontend should:
 
-- 支持格式：`.mp3`、`.wav`、`.ogg`、`.m4a`
-- 默认最大文件大小：`50 MB`
-- 返回的 `url` 可直接作为内容新增或修改接口中的 `music`
+- use relative API paths only
+- request `/api/public/scene-page-config`
+- request `/api/public/content?date=YYYY-MM-DD`
+- keep current date query behavior
+- keep current music play behavior
+- hide logo or banner gracefully when empty
+- background fallback order: `content_items.bg_url`, `scene_page_configs.bac_img`, `scene_page_configs.default_bg_url`, then the existing hardcoded fallback
+- music fallback order: `content_items.music`, `scene_page_configs.default_music`, then the existing hardcoded fallback
 
----
+### 7.2 Admin Frontend
 
-## 7. 参数校验规则
+The admin panel domain remains unchanged.
 
-### 7.1 date
+The admin frontend should:
 
-- 必填
-- 格式必须为 `YYYY-MM-DD`
-- 示例：`2026-04-07`
+- add a dedicated scene page config management page or section
+- list configs
+- create config
+- edit config
+- delete config
+- upload `logo`, `banner`, and `bac_img` through `POST /api/admin/upload/image`
+- upload `default_bg_url` through `POST /api/admin/upload/image`
+- upload `default_music` through `POST /api/admin/upload/audio`
+- read returned `data.url` and save that string into the form
+- allow manual editing of the URL if needed
+- show image preview for `default_bg_url` when practical
+- provide audio preview/playback for `default_music` when practical
+- edit `tags_default` as an array of strings
+- use color inputs or text inputs for hex color strings
 
-### 7.2 text
+## 8. Manual Verification Targets
 
-- 必填
-- 类型为字符串
-- 不允许为空字符串
-
-### 7.3 tags
-
-- 必填
-- 类型为字符串数组
-- 至少包含 1 个标签
-- 示例：`["心动", "温柔", "春天"]`
-
-### 7.4 bg_url
-
-- 必填
-- 类型为字符串
-- 建议为完整可访问的图片 URL 或资源地址
-
-### 7.5 music
-
-- 必填
-- 类型为字符串
-- 建议为完整可访问的音频 URL 或资源地址
-
-### 7.6 page / pageSize
-
-- 必填
-- `page >= 1`
-- `pageSize >= 1`
-- 建议 `pageSize <= 100`
-
-### 7.7 upload file
-
-- `file` 为必填
-- 不允许空文件
-- 文件扩展名和文件内容类型都必须在允许范围内
-- 图片默认大小限制为 `50 MB`
-- 音频默认大小限制为 `50 MB`
-- 上传成功后返回的公开 URL 可直接写入 `bg_url` 或 `music`
-
----
-
-## 8. 业务约束建议
-
-1. 一个 `date` 只允许存在一条数据，便于 H5 按日期直接读取  
-2. 后台用户名和密码由系统初始化，不对外开放注册  
-3. 所有后台接口都需要鉴权  
-4. 后端统一字段命名为 `bg_url`  
-5. 建议对后台接口增加操作日志，便于排查问题  
-6. 建议上线时对图片地址和音频地址进行格式校验  
-
----
-
-## 9. 接口清单总览
-
-| 模块 | 接口 | 方法 | 是否鉴权 | 说明 |
-|---|---|---|---:|---|
-| H5 落地页 | `/api/public/content` | GET | 否 | 按日期获取页面内容 |
-| 后台管理 | `/api/admin/login` | POST | 否 | 管理员登录 |
-| 后台管理 | `/api/admin/content` | POST | 是 | 新增内容 |
-| 后台管理 | `/api/admin/content/:id` | PUT | 是 | 修改内容 |
-| 后台管理 | `/api/admin/content/:id` | DELETE | 是 | 删除内容 |
-| 后台管理 | `/api/admin/content` | GET | 是 | 分页获取内容列表 |
-
----
-
-## 10. 联调示例
-
-### 10.1 新增一条数据
-
-请求：
-
-```http
-POST /api/admin/content
-Authorization: Bearer <token>
-Content-Type: application/json
-```
-
-```json
-{
-  "date": "2026-04-07",
-  "text": "今天也要被温柔对待呀",
-  "tags": ["心动", "温柔", "春天"],
-  "bg_url": "https://example.com/bg.jpg",
-  "music": "https://example.com/music.mp3"
-}
-```
-
-响应：
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "id": 1
-  }
-}
-```
-
-### 10.2 H5 按日期读取
-
-请求：
-
-```http
-GET /api/public/content?date=2026-04-07
-```
-
-响应：
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "id": 1,
-    "date": "2026-04-07",
-    "text": "今天也要被温柔对待呀",
-    "tags": ["心动", "温柔", "春天"],
-    "bg_url": "https://example.com/bg.jpg",
-    "music": "https://example.com/music.mp3",
-    "createdAt": "2026-04-07",
-    "updatedAt": "2026-04-07"
-  }
-}
-```
-
----
-
-## 11. 版本说明
-
-当前版本：`v1`
-
-如后续接口发生变更，应同步更新本文档，并以本文档作为联调基准。
+1. Create a host mapping through `POST /api/admin/scene-domains`.
+2. Upload a logo image through `POST /api/admin/upload/image` with `scene_code=love`.
+3. Upload a banner image through `POST /api/admin/upload/image` with `scene_code=love`.
+4. Upload a background image through `POST /api/admin/upload/image` with `scene_code=love`.
+5. Upload a default background image through `POST /api/admin/upload/image` with `scene_code=love`.
+6. Upload a default music file through `POST /api/admin/upload/audio` with `scene_code=love`.
+7. Create `scene_page_configs` for `scene_code=love` using the returned upload URLs.
+8. Create content for `scene_code=love`, `date=2026-04-07`.
+9. Request public scene page config with `Host: love.dapinsport.cn`.
+10. Request public content with `Host: love.dapinsport.cn`.
+11. Verify H5 fallback rules for logo, banner, background, music, text, tags, and colors.
+12. Verify admin CRUD for scene page configs.

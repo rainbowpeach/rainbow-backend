@@ -24,6 +24,7 @@ type Config struct {
 	AdminPassword string
 	AllowOrigins  []string
 	Upload        UploadConfig
+	Scene         SceneConfig
 }
 
 type DatabaseConfig struct {
@@ -39,6 +40,10 @@ type UploadConfig struct {
 	RootDir      string
 	ImageMaxSize int64
 	AudioMaxSize int64
+}
+
+type SceneConfig struct {
+	EnablePublicOverride bool
 }
 
 func Load() (Config, error) {
@@ -66,6 +71,9 @@ func Load() (Config, error) {
 			RootDir:      filepath.Clean(getEnv("UPLOAD_ROOT", defaultUploadRoot(appEnv))),
 			ImageMaxSize: getEnvInt64("UPLOAD_IMAGE_MAX_SIZE", 50*1024*1024),
 			AudioMaxSize: getEnvInt64("UPLOAD_AUDIO_MAX_SIZE", 50*1024*1024),
+		},
+		Scene: SceneConfig{
+			EnablePublicOverride: getEnvBool("ENABLE_PUBLIC_SCENE_OVERRIDE", false),
 		},
 	}
 
@@ -162,6 +170,19 @@ func getEnvInt64(key string, fallback int64) int64 {
 		parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
 		if err == nil {
 			return parsed
+		}
+	}
+
+	return fallback
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	if value, ok := os.LookupEnv(key); ok && strings.TrimSpace(value) != "" {
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "1", "true", "yes", "on":
+			return true
+		case "0", "false", "no", "off":
+			return false
 		}
 	}
 

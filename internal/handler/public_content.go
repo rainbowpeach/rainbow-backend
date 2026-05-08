@@ -6,17 +6,25 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"rainbow-backend/internal/config"
+	"rainbow-backend/internal/middleware"
 	"rainbow-backend/internal/model"
 	"rainbow-backend/internal/service"
 )
 
 type PublicContentHandler struct {
-	contentService *service.ContentService
+	contentService         *service.ContentService
+	scenePageConfigService *service.ScenePageConfigService
+	sceneResolver          *service.SceneResolver
+	cfg                    config.SceneConfig
 }
 
-func NewPublicContentHandler(contentService *service.ContentService) *PublicContentHandler {
+func NewPublicContentHandler(contentService *service.ContentService, scenePageConfigService *service.ScenePageConfigService, sceneResolver *service.SceneResolver, cfg config.SceneConfig) *PublicContentHandler {
 	return &PublicContentHandler{
-		contentService: contentService,
+		contentService:         contentService,
+		scenePageConfigService: scenePageConfigService,
+		sceneResolver:          sceneResolver,
+		cfg:                    cfg,
 	}
 }
 
@@ -27,9 +35,26 @@ func (h *PublicContentHandler) GetByDate(c *gin.Context) {
 		return
 	}
 
-	result, err := h.contentService.GetByDate(c.Request.Context(), date)
+	var sceneCode string
+	if h.cfg.EnablePublicOverride {
+		if override := c.Query("scene"); override != "" {
+			sceneCode = override
+		}
+	}
+	if sceneCode == "" {
+		resolvedSceneCode, err := h.resolveSceneCode(c)
+		if err != nil {
+			h.respondSceneResolveError(c, err)
+			return
+		}
+		sceneCode = resolvedSceneCode
+	}
+
+	result, err := h.contentService.GetBySceneAndDate(c.Request.Context(), sceneCode, date)
 	if err != nil {
 		switch {
+		case errors.Is(err, service.ErrInvalidContentParams):
+			model.WriteError(c, http.StatusBadRequest, model.CodeInvalidParams, "invalid params")
 		case errors.Is(err, service.ErrInvalidDateFormat):
 			model.WriteError(c, http.StatusBadRequest, model.CodeInvalidDateFormat, "invalid date format")
 		case errors.Is(err, service.ErrContentNotFound):
@@ -41,4 +66,58 @@ func (h *PublicContentHandler) GetByDate(c *gin.Context) {
 	}
 
 	model.WriteOK(c, result)
+}
+
+func (h *PublicContentHandler) GetSceneDomainMapping(c *gin.Context) {
+	resolved, err := h.sceneResolver.ResolveHost(c.Request.Context(), middleware.RequestHost(c.Request))
+	if err != nil {
+		h.respondSceneResolveError(c, err)
+		return
+	}
+
+	model.WriteOK(c, &model.PublicSceneDomainMappingResponse{
+		Host:      resolved.Host,
+		SceneCode: resolved.SceneCode,
+	})
+}
+
+func (h *PublicContentHandler) GetScenePageConfig(c *gin.Context) {
+	sceneCode, err := h.resolveSceneCode(c)
+	if err != nil {
+		h.respondSceneResolveError(c, err)
+		return
+	}
+
+	result, err := h.scenePageConfigService.GetBySceneCode(c.Request.Context(), sceneCode)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidScenePageConfigParams):
+			model.WriteError(c, http.StatusBadRequest, model.CodeInvalidParams, "invalid params")
+		case errors.Is(err, service.ErrScenePageConfigNotFound):
+			model.WriteError(c, http.StatusNotFound, model.CodeScenePageConfigNotFound, "scene page config not found")
+		default:
+			model.WriteError(c, http.StatusInternalServerError, model.CodeInternalServerError, "internal server error")
+		}
+		return
+	}
+
+	model.WriteOK(c, result)
+}
+
+func (h *PublicContentHandler) resolveSceneCode(c *gin.Context) (string, error) {
+	resolved, err := h.sceneResolver.ResolveHost(c.Request.Context(), middleware.RequestHost(c.Request))
+	if err != nil {
+		return "", err
+	}
+
+	return resolved.SceneCode, nil
+}
+
+func (h *PublicContentHandler) respondSceneResolveError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, service.ErrSceneNotConfigured):
+		model.WriteError(c, http.StatusNotFound, model.CodeSceneDomainNotFound, "scene not configured")
+	default:
+		model.WriteError(c, http.StatusInternalServerError, model.CodeInternalServerError, "internal server error")
+	}
 }

@@ -29,12 +29,17 @@ func NewContentService(contentRepo repo.ContentRepository) *ContentService {
 	}
 }
 
-func (s *ContentService) GetByDate(ctx context.Context, date string) (*model.ContentResponse, error) {
+func (s *ContentService) GetBySceneAndDate(ctx context.Context, sceneCode, date string) (*model.ContentResponse, error) {
+	normalizedSceneCode, err := model.ValidateSceneCode(sceneCode)
+	if err != nil {
+		return nil, ErrInvalidContentParams
+	}
+	date = strings.TrimSpace(date)
 	if _, err := time.Parse("2006-01-02", date); err != nil {
 		return nil, ErrInvalidDateFormat
 	}
 
-	item, err := s.contentRepo.GetByDate(ctx, date)
+	item, err := s.contentRepo.GetBySceneAndDate(ctx, normalizedSceneCode, date)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrContentNotFound
@@ -51,11 +56,12 @@ func (s *ContentService) Create(ctx context.Context, req *model.ContentUpsertReq
 	}
 
 	item := &model.ContentItem{
-		Date:  req.Date,
-		Text:  req.Text,
-		Tags:  model.JSONStringArray(req.Tags),
-		BgURL: req.BgURL,
-		Music: req.Music,
+		SceneCode: model.NormalizeSceneCode(req.SceneCode),
+		Date:      req.Date,
+		Text:      req.Text,
+		Tags:      model.JSONStringArray(req.Tags),
+		BgURL:     req.BgURL,
+		Music:     req.Music,
 	}
 	if err := s.contentRepo.Create(ctx, item); err != nil {
 		if isDuplicateDateError(err) {
@@ -73,11 +79,12 @@ func (s *ContentService) Update(ctx context.Context, id uint, req *model.Content
 	}
 
 	item := &model.ContentItem{
-		Date:  req.Date,
-		Text:  req.Text,
-		Tags:  model.JSONStringArray(req.Tags),
-		BgURL: req.BgURL,
-		Music: req.Music,
+		SceneCode: model.NormalizeSceneCode(req.SceneCode),
+		Date:      req.Date,
+		Text:      req.Text,
+		Tags:      model.JSONStringArray(req.Tags),
+		BgURL:     req.BgURL,
+		Music:     req.Music,
 	}
 	if err := s.contentRepo.UpdateByID(ctx, id, item); err != nil {
 		switch {
@@ -104,8 +111,22 @@ func (s *ContentService) Delete(ctx context.Context, id uint) (*model.IDResponse
 	return &model.IDResponse{ID: id}, nil
 }
 
-func (s *ContentService) List(ctx context.Context, page, pageSize int) (*model.ContentListResponse, error) {
-	items, total, err := s.contentRepo.List(ctx, page, pageSize)
+func (s *ContentService) List(ctx context.Context, filter model.ContentFilter, page, pageSize int) (*model.ContentListResponse, error) {
+	if filter.Date != "" {
+		filter.Date = strings.TrimSpace(filter.Date)
+		if err := validateDate(filter.Date); err != nil {
+			return nil, err
+		}
+	}
+	if filter.SceneCode != "" {
+		normalizedSceneCode, err := model.ValidateSceneCode(filter.SceneCode)
+		if err != nil {
+			return nil, ErrInvalidContentParams
+		}
+		filter.SceneCode = normalizedSceneCode
+	}
+
+	items, total, err := s.contentRepo.List(ctx, filter, page, pageSize)
 	if err != nil {
 		return nil, fmt.Errorf("list content: %w", err)
 	}
@@ -124,6 +145,7 @@ func (s *ContentService) List(ctx context.Context, page, pageSize int) (*model.C
 }
 
 func validateDate(date string) error {
+	date = strings.TrimSpace(date)
 	if _, err := time.Parse("2006-01-02", date); err != nil {
 		return ErrInvalidDateFormat
 	}
@@ -134,20 +156,25 @@ func validateContentUpsert(req *model.ContentUpsertRequest) error {
 	if req == nil {
 		return ErrInvalidContentParams
 	}
+	sceneCode, err := model.ValidateSceneCode(req.SceneCode)
+	if err != nil {
+		return ErrInvalidContentParams
+	}
+	req.SceneCode = sceneCode
+	req.Date = strings.TrimSpace(req.Date)
 	if err := validateDate(req.Date); err != nil {
 		return err
 	}
-	if strings.TrimSpace(req.Text) == "" || strings.TrimSpace(req.BgURL) == "" || strings.TrimSpace(req.Music) == "" {
-		return ErrInvalidContentParams
-	}
-	if len(req.Tags) == 0 {
-		return ErrInvalidContentParams
-	}
-	for _, tag := range req.Tags {
-		if strings.TrimSpace(tag) == "" {
+	for i, tag := range req.Tags {
+		normalizedTag := strings.TrimSpace(tag)
+		if normalizedTag == "" {
 			return ErrInvalidContentParams
 		}
+		req.Tags[i] = normalizedTag
 	}
+	req.Text = strings.TrimSpace(req.Text)
+	req.BgURL = strings.TrimSpace(req.BgURL)
+	req.Music = strings.TrimSpace(req.Music)
 	return nil
 }
 

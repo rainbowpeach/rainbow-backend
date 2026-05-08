@@ -7,6 +7,8 @@ APP_DIR="/opt/rainbow-backend"
 BIN_DIR="${APP_DIR}/bin"
 UPLOAD_DIR="${APP_DIR}/uploads/prod"
 LOG_DIR="${APP_DIR}/logs/prod"
+H5_DIR="${APP_DIR}/www/h5"
+ADMIN_DIR="${APP_DIR}/www/admin"
 LOCAL_BIN="${ROOT_DIR}/bin/rainbow-backend"
 SERVICE_NAME="rainbow-backend-prod.service"
 SERVICE_TARGET="/etc/systemd/system/${SERVICE_NAME}"
@@ -29,10 +31,17 @@ sudo mkdir -p "${BIN_DIR}"
 sudo install -m 0755 "${LOCAL_BIN}" "${BIN_DIR}/rainbow-backend"
 
 echo "Ensuring upload directories exist under ${UPLOAD_DIR}..."
-sudo mkdir -p "${UPLOAD_DIR}/images" "${UPLOAD_DIR}/audio"
+sudo mkdir -p \
+  "${UPLOAD_DIR}/images" \
+  "${UPLOAD_DIR}/audio" \
+  "${UPLOAD_DIR}/default/images" \
+  "${UPLOAD_DIR}/default/audio"
 
 echo "Ensuring log directory exists at ${LOG_DIR}..."
 sudo mkdir -p "${LOG_DIR}"
+
+echo "Ensuring frontend static roots exist..."
+sudo mkdir -p "${H5_DIR}" "${ADMIN_DIR}"
 
 if sudo test -f "${ENV_TARGET}"; then
   echo "Keeping existing env file: ${ENV_TARGET}"
@@ -45,7 +54,7 @@ echo "Installing systemd unit: ${SERVICE_TARGET}"
 sudo install -m 0644 "${SERVICE_SOURCE}" "${SERVICE_TARGET}"
 
 echo "Installing Nginx config: ${NGINX_TARGET}"
-sudo install -m 0644 "${NGINX_SOURCE}" "${NGINX_TARGET}"
+# sudo install -m 0644 "${NGINX_SOURCE}" "${NGINX_TARGET}"
 
 echo "Reloading systemd and restarting ${SERVICE_NAME}..."
 sudo systemctl daemon-reload
@@ -73,4 +82,6 @@ URLs:
   Public health check: ${PUBLIC_URL}
   Static image URL pattern: http://<public-ip>:28080/static/images/<filename>
   Static audio URL pattern: http://<public-ip>:28080/static/audio/<filename>
+  Scene image URL pattern: http://<public-host>/static/<scene_code>/images/<filename>
+  Scene audio URL pattern: http://<public-host>/static/<scene_code>/audio/<filename>
 EOF

@@ -4,11 +4,12 @@ import "time"
 
 type ContentItem struct {
 	ID        uint            `gorm:"primaryKey" json:"id"`
-	Date      string          `gorm:"size:10;uniqueIndex;not null" json:"date"`
-	Text      string          `gorm:"type:text;not null" json:"text"`
-	Tags      JSONStringArray `gorm:"type:json;not null" json:"tags"`
-	BgURL     string          `gorm:"column:bg_url;type:text;not null" json:"bg_url"`
-	Music     string          `gorm:"type:text;not null" json:"music"`
+	SceneCode string          `gorm:"column:scene_code;size:64;not null;index;uniqueIndex:idx_content_scene_date" json:"scene_code"`
+	Date      string          `gorm:"size:10;not null;uniqueIndex:idx_content_scene_date" json:"date"`
+	Text      string          `gorm:"type:text" json:"text"`
+	Tags      JSONStringArray `gorm:"type:json" json:"tags"`
+	BgURL     string          `gorm:"column:bg_url;type:text" json:"bg_url"`
+	Music     string          `gorm:"type:text" json:"music"`
 	CreatedAt time.Time       `json:"createdAt"`
 	UpdatedAt time.Time       `json:"updatedAt"`
 }
@@ -18,15 +19,17 @@ func (ContentItem) TableName() string {
 }
 
 type ContentUpsertRequest struct {
-	Date  string   `json:"date" binding:"required"`
-	Text  string   `json:"text" binding:"required"`
-	Tags  []string `json:"tags" binding:"required,min=1,dive,required"`
-	BgURL string   `json:"bg_url" binding:"required"`
-	Music string   `json:"music" binding:"required"`
+	SceneCode string   `json:"scene_code" binding:"required"`
+	Date      string   `json:"date" binding:"required"`
+	Text      string   `json:"text"`
+	Tags      []string `json:"tags"`
+	BgURL     string   `json:"bg_url"`
+	Music     string   `json:"music"`
 }
 
 type ContentResponse struct {
 	ID        uint     `json:"id"`
+	SceneCode string   `json:"scene_code"`
 	Date      string   `json:"date"`
 	Text      string   `json:"text"`
 	Tags      []string `json:"tags"`
@@ -41,11 +44,17 @@ func NewContentResponse(item *ContentItem) *ContentResponse {
 		return nil
 	}
 
+	tags := []string(item.Tags)
+	if tags == nil {
+		tags = []string{}
+	}
+
 	return &ContentResponse{
 		ID:        item.ID,
+		SceneCode: item.SceneCode,
 		Date:      item.Date,
 		Text:      item.Text,
-		Tags:      []string(item.Tags),
+		Tags:      tags,
 		BgURL:     item.BgURL,
 		Music:     item.Music,
 		CreatedAt: item.CreatedAt.Format("2006-01-02"),
@@ -54,8 +63,10 @@ func NewContentResponse(item *ContentItem) *ContentResponse {
 }
 
 type ContentListRequest struct {
-	Page     int `form:"page" binding:"required,min=1"`
-	PageSize int `form:"pageSize" binding:"required,min=1,max=100"`
+	Page     int    `form:"page" binding:"required,min=1"`
+	PageSize int    `form:"pageSize" binding:"required,min=1,max=100"`
+	Scene    string `form:"scene"`
+	Date     string `form:"date"`
 }
 
 type ContentListResponse struct {

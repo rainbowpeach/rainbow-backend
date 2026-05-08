@@ -32,12 +32,12 @@ func (h *AdminContentHandler) Create(c *gin.Context) {
 
 	result, err := h.contentService.Create(c.Request.Context(), &req)
 	if err != nil {
-		log.Printf("admin content create failed %s ip=%s date=%s err=%v", adminActor(c), c.ClientIP(), req.Date, err)
+		log.Printf("admin content create failed %s ip=%s scene=%s date=%s err=%v", adminActor(c), c.ClientIP(), req.SceneCode, req.Date, err)
 		h.respondContentError(c, err)
 		return
 	}
 
-	log.Printf("admin content created %s ip=%s content_id=%d date=%s", adminActor(c), c.ClientIP(), result.ID, req.Date)
+	log.Printf("admin content created %s ip=%s content_id=%d scene=%s date=%s", adminActor(c), c.ClientIP(), result.ID, req.SceneCode, req.Date)
 	model.WriteOK(c, result)
 }
 
@@ -56,12 +56,12 @@ func (h *AdminContentHandler) Update(c *gin.Context) {
 
 	result, err := h.contentService.Update(c.Request.Context(), id, &req)
 	if err != nil {
-		log.Printf("admin content update failed %s ip=%s content_id=%d date=%s err=%v", adminActor(c), c.ClientIP(), id, req.Date, err)
+		log.Printf("admin content update failed %s ip=%s content_id=%d scene=%s date=%s err=%v", adminActor(c), c.ClientIP(), id, req.SceneCode, req.Date, err)
 		h.respondContentError(c, err)
 		return
 	}
 
-	log.Printf("admin content updated %s ip=%s content_id=%d date=%s", adminActor(c), c.ClientIP(), result.ID, req.Date)
+	log.Printf("admin content updated %s ip=%s content_id=%d scene=%s date=%s", adminActor(c), c.ClientIP(), result.ID, req.SceneCode, req.Date)
 	model.WriteOK(c, result)
 }
 
@@ -90,10 +90,13 @@ func (h *AdminContentHandler) List(c *gin.Context) {
 		return
 	}
 
-	result, err := h.contentService.List(c.Request.Context(), req.Page, req.PageSize)
+	result, err := h.contentService.List(c.Request.Context(), model.ContentFilter{
+		SceneCode: req.Scene,
+		Date:      req.Date,
+	}, req.Page, req.PageSize)
 	if err != nil {
-		log.Printf("admin content list failed %s ip=%s page=%d page_size=%d err=%v", adminActor(c), c.ClientIP(), req.Page, req.PageSize, err)
-		model.WriteError(c, http.StatusInternalServerError, model.CodeInternalServerError, "internal server error")
+		log.Printf("admin content list failed %s ip=%s page=%d page_size=%d scene=%s date=%s err=%v", adminActor(c), c.ClientIP(), req.Page, req.PageSize, req.Scene, req.Date, err)
+		h.respondContentError(c, err)
 		return
 	}
 

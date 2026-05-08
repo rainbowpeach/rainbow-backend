@@ -2,32 +2,98 @@
 
 ## Overview
 
-This project is a Gin + GORM + MySQL backend for:
+This repository is a Gin + GORM + MySQL backend for:
 
-- H5 public content query by date
-- Admin login
-- Admin image and audio upload to the current server
-- Admin content create, update, delete, and paginated list
+- H5 public content display
+- public scene page config queries
+- admin login
+- scene-aware content CRUD
+- host to scene mapping CRUD
+- scene page config CRUD
+- scene-scoped image and audio upload
 
-The API follows [docs/api-spec.md](docs/api-spec.md) and keeps these rules unchanged:
+The feature uses three business tables:
 
-- `bg_url` is the only background image field
+- `scene_domains`
+- `scene_page_configs`
+- `content_items`
+
+There is no `scenes` table and no extra scene registry table.
+
+## What The Tables Mean
+
+`scene_domains` maps `host -> scene_code`.
+
+`scene_page_configs` stores scene-level page defaults such as logo, banner, background image URL, default fallback background URL, default music URL, default text, default tags, and colors.
+
+`content_items` stores daily content for each `scene_code + date`.
+
+## How Public H5 Works
+
+Public H5 requests resolve the current scene from the request `Host`.
+
+Resolution flow:
+
+1. read `Host`
+2. strip the port if present
+3. query `scene_domains`
+4. use the mapped `scene_code`
+5. fetch `/api/public/scene-page-config`
+6. fetch `/api/public/content?date=YYYY-MM-DD`
+
+Fallback rules:
+
+- `logo` comes from `scene_page_configs.logo`
+- `banner` comes from `scene_page_configs.banner`
+- `GET /api/public/content` returns raw `content_items` data only; H5 merges fallback values from `scene_page_configs`
+- background image uses `content_items.bg_url` first when non-empty, then `scene_page_configs.bac_img`, then `scene_page_configs.default_bg_url`, then the existing hardcoded H5 fallback
+- music uses `content_items.music` first when non-empty, then `scene_page_configs.default_music`, then the existing hardcoded H5 fallback
+- text uses `content_items.text` first when non-empty, then `scene_page_configs.text_default`, then the existing hardcoded H5 fallback
+- tags use `content_items.tags` first when non-empty, then `scene_page_configs.tags_default`, then the existing hardcoded H5 fallback
+- colors come from `scene_page_configs`
+
+The H5 frontend should use relative API paths only.
+
+## How Admin Works
+
+Admin remains one management system on a fixed admin domain.
+
+The admin frontend should:
+
+- manage host mappings in `scene_domains`
+- manage page defaults in `scene_page_configs`
+- manage daily content in `content_items`
+- upload images through `POST /api/admin/upload/image`
+- upload audio through `POST /api/admin/upload/audio`
+- save the returned image `data.url` string into `logo`, `banner`, `bac_img`, or `default_bg_url`
+- save the returned audio `data.url` string into `default_music`
+
+`logo`, `banner`, `bac_img`, `default_bg_url`, and `default_music` are not uploaded directly through the scene page config APIs. Those APIs store URL strings only.
+
+## Repository State
+
+This repository contains the backend service, deployment scripts, and Nginx/systemd examples.
+
+It does not currently include checked-in H5 frontend source, admin frontend source, or built frontend bundles. The deployment configs expect bundles to be copied to:
+
+- `/opt/rainbow-backend/www/h5`
+- `/opt/rainbow-backend/www/admin`
+
+## API Contract
+
+The source of truth is [docs/api-spec.md](docs/api-spec.md).
+
+Key rules:
+
+- `bg_url` is the only background image field for content
 - `tags` is always a string array
+- `tags_default` is always a string array in responses
 - `date` uses `YYYY-MM-DD`
-- all responses use a stable JSON envelope
-
-`bg_url` and `music` should now be the public URLs returned by the admin upload APIs:
-
-- `POST /api/admin/upload/image`
-- `POST /api/admin/upload/audio`
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {}
-}
-```
+- `scene_code` and `date` are required for admin content create and update; `text`, `tags`, `bg_url`, and `music` are optional
+- image and audio fields store URL strings, not binary data
+- public content resolves scene from `Host`
+- `scene_domains` only stores `host` and `scene_code`
+- `scene_page_configs` stores scene-level page defaults
 
 ## Requirements
 
@@ -40,88 +106,98 @@ The API follows [docs/api-spec.md](docs/api-spec.md) and keeps these rules uncha
 
 ## Environment Variables
 
-For local development, copy [.env.example](.env.example) to `.env`.
-
-For dual-environment deployment, use:
-
-- [deploy/env/test.env.example](deploy/env/test.env.example)
-- [deploy/env/prod.env.example](deploy/env/prod.env.example)
-
-Supported variables:
-
-- `APP_ENV`: `dev`, `test`, or `prod`
-- `HOST`: HTTP listen host
-- `PORT`: HTTP listen port
-- `DB_DRIVER`: currently `mysql`
-- `DB_DSN`: MySQL DSN
-- `LOG_ROOT`: log directory for `app.log` and `access.log`
-- `JWT_SECRET`: JWT signing secret
-- `JWT_EXPIRES_IN`: token expiry in seconds
-- `ADMIN_USERNAME`: seeded admin username
-- `ADMIN_PASSWORD`: seeded admin password
-- `ALLOW_ORIGINS`: comma-separated CORS allowlist, or `*`
-- `UPLOAD_ROOT`: upload root directory for the current environment
-- `UPLOAD_IMAGE_MAX_SIZE`: max image upload size in bytes, default `52428800`
-- `UPLOAD_AUDIO_MAX_SIZE`: max audio upload size in bytes, default `52428800`
-
-On startup the service auto-migrates tables and seeds or updates the admin account from `ADMIN_USERNAME` and `ADMIN_PASSWORD`.
-
-Default upload roots:
-
-- `APP_ENV=dev`: `./uploads/dev`
-- `APP_ENV=test`: `/opt/rainbow-backend/uploads/test`
-- `APP_ENV=prod`: `/opt/rainbow-backend/uploads/prod`
-
-Default log roots:
-
-- `APP_ENV=dev`: `./logs/dev`
-- `APP_ENV=test`: `/opt/rainbow-backend/logs/test`
-- `APP_ENV=prod`: `/opt/rainbow-backend/logs/prod`
-
-Generated log files:
-
-- `app.log`: startup, panic recovery, auth, admin operation, upload logs
-- `access.log`: HTTP access logs from Gin middleware
-
-## MySQL Setup
-
-### Log in to MySQL
-
-```bash
-mysql -uroot -p
-```
-
-### Create the two deployment databases
-
-```sql
-CREATE DATABASE rainbow_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE DATABASE rainbow_prod CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
-
-Example DSNs used by the deployment env files:
-
-```text
-root:password@tcp(127.0.0.1:3306)/rainbow_test?charset=utf8mb4&parseTime=True&loc=Local
-root:password@tcp(127.0.0.1:3306)/rainbow_prod?charset=utf8mb4&parseTime=True&loc=Local
-```
-
-## Local Development
-
-1. Create a local database such as `rainbow`.
-2. Copy the environment file:
+Copy `.env.example` for local development:
 
 ```bash
 cp .env.example .env
 ```
 
-3. Edit `.env` as needed.
-4. Start the server:
+Important variables:
 
-```bash
-make run
-```
+- `APP_ENV`: `dev`, `test`, or `prod`
+- `HOST`: backend listen host
+- `PORT`: backend listen port
+- `DB_DRIVER`: currently only `mysql`
+- `DB_DSN`: MySQL DSN
+- `LOG_ROOT`: directory for `app.log` and `access.log`
+- `JWT_SECRET`: JWT signing secret
+- `JWT_EXPIRES_IN`: token expiry in seconds
+- `ADMIN_USERNAME`: seeded admin username
+- `ADMIN_PASSWORD`: seeded admin password
+- `ALLOW_ORIGINS`: CORS allowlist
+- `UPLOAD_ROOT`: upload root
+- `UPLOAD_IMAGE_MAX_SIZE`: image upload size limit
+- `UPLOAD_AUDIO_MAX_SIZE`: audio upload size limit
+- `ENABLE_PUBLIC_SCENE_OVERRIDE`: optional debug switch for public `scene` query override
 
-or:
+Default upload roots:
+
+- `dev`: `./uploads/dev`
+- `test`: `/opt/rainbow-backend/uploads/test`
+- `prod`: `/opt/rainbow-backend/uploads/prod`
+
+Scene-specific uploads are stored under:
+
+- `./uploads/dev/<scene_code>/images`
+- `./uploads/dev/<scene_code>/audio`
+- `/opt/rainbow-backend/uploads/test/<scene_code>/images`
+- `/opt/rainbow-backend/uploads/test/<scene_code>/audio`
+- `/opt/rainbow-backend/uploads/prod/<scene_code>/images`
+- `/opt/rainbow-backend/uploads/prod/<scene_code>/audio`
+
+Scene-scoped static paths:
+
+- `/static/<scene_code>/images/<filename>`
+- `/static/<scene_code>/audio/<filename>`
+
+## Database Behavior
+
+### `content_items`
+
+`content_items` includes:
+
+- `scene_code`
+- unique constraint on `(scene_code, date)`
+- optional `text`, `tags`, `bg_url`, and `music`
+
+Migration behavior:
+
+- existing rows with empty or missing `scene_code` are backfilled to `default`
+- legacy date-only unique indexes are removed
+
+### `scene_domains`
+
+`scene_domains` is the only host-mapping table used for this feature.
+
+Business fields:
+
+- `host`
+- `scene_code`
+
+### `scene_page_configs`
+
+`scene_page_configs` stores:
+
+- `scene_code`
+- `logo`
+- `banner`
+- `bac_img`
+- `default_bg_url`
+- `default_music`
+- `text_default`
+- `tags_default`
+- `play_button_color`
+- `text_default_color`
+- `tags_color`
+- `tags_bac_color`
+- `date_color`
+
+## Local Development
+
+1. Create a local MySQL database such as `rainbow`.
+2. Copy `.env.example` to `.env`.
+3. Edit `.env`.
+4. Start the service:
 
 ```bash
 bash ./scripts/start.sh
@@ -141,6 +217,7 @@ HOST=0.0.0.0
 PORT=8080
 LOG_ROOT=./logs/dev
 UPLOAD_ROOT=./uploads/dev
+ENABLE_PUBLIC_SCENE_OVERRIDE=false
 ```
 
 Local health check:
@@ -149,45 +226,18 @@ Local health check:
 curl http://127.0.0.1:8080/health
 ```
 
-## Dual-Environment Deployment
+## Deployment
 
-### Topology
+### Dual Environment
 
-The same public IP serves both environments on different external ports. There is one codebase and one backend binary.
+The repository keeps the existing test/prod split:
 
-- Test public entry: `http://<public-ip>:18080`
-- Prod public entry: `http://<public-ip>:28080`
-- Test backend listen: `127.0.0.1:18081`
-- Prod backend listen: `127.0.0.1:28081`
+- test backend: `127.0.0.1:18081`
+- prod backend: `127.0.0.1:28081`
+- test public port: `18080`
+- prod public port: `28080`
 
-Nginx reverse proxy mapping:
-
-- `18080 -> http://127.0.0.1:18081`
-- `28080 -> http://127.0.0.1:28081`
-
-Nginx static file mapping:
-
-- `http://<public-ip>:18080/static/images/<filename> -> /opt/rainbow-backend/uploads/test/images/<filename>`
-- `http://<public-ip>:18080/static/audio/<filename> -> /opt/rainbow-backend/uploads/test/audio/<filename>`
-- `http://<public-ip>:28080/static/images/<filename> -> /opt/rainbow-backend/uploads/prod/images/<filename>`
-- `http://<public-ip>:28080/static/audio/<filename> -> /opt/rainbow-backend/uploads/prod/audio/<filename>`
-
-MySQL separation:
-
-- Test database: `rainbow_test`
-- Prod database: `rainbow_prod`
-
-Env separation:
-
-- `/opt/rainbow-backend/test.env`
-- `/opt/rainbow-backend/prod.env`
-
-systemd separation:
-
-- `rainbow-backend-test.service`
-- `rainbow-backend-prod.service`
-
-Deployment assets:
+Deployment examples:
 
 - [deploy/env/test.env.example](deploy/env/test.env.example)
 - [deploy/env/prod.env.example](deploy/env/prod.env.example)
@@ -195,9 +245,7 @@ Deployment assets:
 - [deploy/systemd/rainbow-backend-prod.service](deploy/systemd/rainbow-backend-prod.service)
 - [deploy/nginx/rainbow-backend-ports.conf](deploy/nginx/rainbow-backend-ports.conf)
 
-### One-Command Deploy And Start
-
-From the repository root:
+One-command deployment:
 
 ```bash
 bash ./scripts/test.sh
@@ -207,178 +255,63 @@ bash ./scripts/test.sh
 bash ./scripts/prod.sh
 ```
 
-These scripts:
+The scripts:
 
 1. build `./bin/rainbow-backend`
-2. ensure `/opt/rainbow-backend/bin` exists
-3. copy the latest binary to `/opt/rainbow-backend/bin/rainbow-backend`
-4. create `/opt/rainbow-backend/test.env` or `/opt/rainbow-backend/prod.env` only if missing
-5. ensure the matching upload directories exist under `/opt/rainbow-backend/uploads/`
-6. ensure the matching log directory exists under `/opt/rainbow-backend/logs/`
-7. install the matching systemd unit into `/etc/systemd/system/`
-8. install the shared Nginx port config into `/etc/nginx/conf.d/`
-9. run `systemctl daemon-reload`
-10. enable and restart the matching backend service
-11. run `nginx -t` and reload Nginx
-12. print verification commands and URLs
+2. copy the binary into `/opt/rainbow-backend/bin`
+3. install env files if missing
+4. ensure upload and log directories exist
+5. ensure frontend static roots exist under `/opt/rainbow-backend/www/h5` and `/opt/rainbow-backend/www/admin`
+6. install systemd units
+7. install the shared Nginx config
+8. reload systemd
+9. restart the matching backend service
+10. validate and reload Nginx
 
-The scripts do not silently overwrite existing env files.
+### Nginx Behavior
 
-Before internet-facing use, edit the copied env files and replace:
+The provided Nginx examples are designed so that:
 
-- database credentials
-- JWT secrets
-- admin passwords
-- `ALLOW_ORIGINS`
+- the same H5 bundle can be served under multiple public hosts
+- `/api/` preserves the original `Host` header
+- `/static/` is proxied to the backend so uploaded files are served from the runtime `UPLOAD_ROOT`
+- the backend can resolve `scene_code` from `Host`
+- the admin panel remains a single fixed domain
+- no scene-specific backend mapping is hardcoded in Go code
 
-## Uploads
+Public H5 should use relative API paths such as:
 
-### What `bg_url` and `music` mean
-
-- `bg_url` should be the image URL returned by `POST /api/admin/upload/image`
-- `music` should be the audio URL returned by `POST /api/admin/upload/audio`
-- The content create and update APIs stay unchanged and still accept plain string URLs for these fields
-
-### Authenticated upload endpoints
-
-- `POST /api/admin/upload/image`
-- `POST /api/admin/upload/audio`
-
-Both endpoints:
-
-- require `Authorization: Bearer <token>`
-- require `multipart/form-data`
-- use the form field name `file`
-- return the stable JSON envelope with `url`, `filename`, `size`, and `contentType`
-
-Example response:
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "url": "http://<public-ip>:18080/static/images/20260415093015-ab12cd34.png",
-    "filename": "20260415093015-ab12cd34.png",
-    "size": 12345,
-    "contentType": "image/png"
-  }
-}
+```text
+/api/public/content?date=2026-04-07
 ```
 
-### Supported formats and size limits
+## API Examples
 
-- images: `.jpg`, `.jpeg`, `.png`, `.webp`
-- audio: `.mp3`, `.wav`, `.ogg`, `.m4a`
-- default image max size: `50 MB`
-- default audio max size: `50 MB`
-- both limits are configurable with `UPLOAD_IMAGE_MAX_SIZE` and `UPLOAD_AUDIO_MAX_SIZE`
-
-### Storage paths on the current server
-
-- dev images: `./uploads/dev/images/`
-- dev audio: `./uploads/dev/audio/`
-- test images: `/opt/rainbow-backend/uploads/test/images/`
-- test audio: `/opt/rainbow-backend/uploads/test/audio/`
-- prod images: `/opt/rainbow-backend/uploads/prod/images/`
-- prod audio: `/opt/rainbow-backend/uploads/prod/audio/`
-
-The backend creates missing directories automatically when the first upload is saved.
-
-### Public static URL patterns
-
-- test images: `http://<public-ip>:18080/static/images/<filename>`
-- test audio: `http://<public-ip>:18080/static/audio/<filename>`
-- prod images: `http://<public-ip>:28080/static/images/<filename>`
-- prod audio: `http://<public-ip>:28080/static/audio/<filename>`
-
-The backend builds the returned URL from the current request host and forwarded scheme, so the same codebase works for both `test` and `prod` behind the existing Nginx proxy.
-
-### Nginx static serving
-
-The public Nginx servers now do two things at the same time:
-
-- serve `/static/images/` and `/static/audio/` directly from disk using `alias`
-- keep proxying `/api/...` and `/health` requests to the backend unchanged
-
-This is defined in [deploy/nginx/rainbow-backend-ports.conf](deploy/nginx/rainbow-backend-ports.conf).
-
-## Verification
-
-### systemd
+Public content by host:
 
 ```bash
-sudo systemctl status rainbow-backend-test.service --no-pager
-sudo systemctl status rainbow-backend-prod.service --no-pager
+curl -H 'Host: love.example.com' \
+  'http://127.0.0.1:8080/api/public/content?date=2026-04-07'
 ```
 
+Public scene page config:
+
 ```bash
-sudo journalctl -u rainbow-backend-test.service -n 100 --no-pager
-sudo journalctl -u rainbow-backend-prod.service -n 100 --no-pager
+curl -H 'Host: love.example.com' \
+  'http://127.0.0.1:8080/api/public/scene-page-config'
 ```
 
-### Nginx
+Current host mapping:
 
 ```bash
-sudo nginx -t
-sudo systemctl reload nginx
+curl -H 'Host: love.example.com' \
+  'http://127.0.0.1:8080/api/public/scene-domain-mapping'
 ```
 
-### Health checks
-
-Local backend health checks:
+Admin login:
 
 ```bash
-curl http://127.0.0.1:18081/health
-curl http://127.0.0.1:28081/health
-```
-
-Public health checks:
-
-```bash
-curl http://<public-ip>:18080/health
-curl http://<public-ip>:28080/health
-```
-
-### Frontend base URLs
-
-Frontend developers should use:
-
-- Test base URL: `http://<public-ip>:18080`
-- Prod base URL: `http://<public-ip>:28080`
-
-## Frontend Integration Flow
-
-Expected admin frontend workflow:
-
-1. Login with `POST /api/admin/login` and store the JWT token.
-2. Upload a background image with `POST /api/admin/upload/image`.
-3. Upload background audio with `POST /api/admin/upload/audio`.
-4. Read `data.url` from both upload responses.
-5. Submit `POST /api/admin/content` or `PUT /api/admin/content/:id` using those returned URLs as `bg_url` and `music`.
-6. Frontend H5 requests `GET /api/public/content?date=YYYY-MM-DD` and uses the stored URLs directly.
-
-Notes for frontend developers:
-
-- Test base URL: `http://<public-ip>:18080`
-- Prod base URL: `http://<public-ip>:28080`
-- Public content endpoint: `GET /api/public/content?date=YYYY-MM-DD`
-- Admin login endpoint: `POST /api/admin/login`
-- Admin image upload endpoint: `POST /api/admin/upload/image`
-- Admin audio upload endpoint: `POST /api/admin/upload/audio`
-- Admin auth header: `Authorization: Bearer <token>`
-- CORS note: every frontend origin must be added to `ALLOW_ORIGINS`
-
-Example public API request:
-
-```bash
-curl 'http://<public-ip>:18080/api/public/content?date=2026-04-07'
-```
-
-Admin login example:
-
-```bash
-curl -X POST 'http://<public-ip>:18080/api/admin/login' \
+curl -X POST 'https://admin.example.com/api/admin/login' \
   -H 'Content-Type: application/json' \
   -d '{
     "username": "admin",
@@ -386,10 +319,10 @@ curl -X POST 'http://<public-ip>:18080/api/admin/login' \
   }'
 ```
 
-Get a token and call an admin API:
+Save the token:
 
 ```bash
-TOKEN=$(curl -s -X POST 'http://<public-ip>:18080/api/admin/login' \
+TOKEN=$(curl -s -X POST 'https://admin.example.com/api/admin/login' \
   -H 'Content-Type: application/json' \
   -d '{
     "username": "admin",
@@ -397,114 +330,123 @@ TOKEN=$(curl -s -X POST 'http://<public-ip>:18080/api/admin/login' \
   }' | jq -r '.data.token')
 ```
 
+Create content with `scene_code`:
+
 ```bash
-curl 'http://<public-ip>:18080/api/admin/content?page=1&pageSize=10' \
-  -H "Authorization: Bearer ${TOKEN}"
+curl -X POST 'https://admin.example.com/api/admin/content' \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "scene_code": "love",
+    "date": "2026-04-07"
+  }'
 ```
 
-## API Examples
-
-Upload image:
+Partial content example:
 
 ```bash
-curl -X POST 'http://<public-ip>:18080/api/admin/upload/image' \
+curl -X POST 'https://admin.example.com/api/admin/content' \
   -H "Authorization: Bearer ${TOKEN}" \
-  -F 'file=@/absolute/path/to/bg.png'
+  -H 'Content-Type: application/json' \
+  -d '{
+    "scene_code": "love",
+    "date": "2026-04-07",
+    "text": "Today is a good day."
+  }'
 ```
 
-Upload audio:
+Create scene page config:
 
 ```bash
-curl -X POST 'http://<public-ip>:18080/api/admin/upload/audio' \
+curl -X POST 'https://admin.example.com/api/admin/scene-page-configs' \
   -H "Authorization: Bearer ${TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "scene_code": "love",
+    "logo": "/static/love/images/logo_xxx.png",
+    "banner": "/static/love/images/banner_xxx.png",
+    "bac_img": "/static/love/images/bg_xxx.jpg",
+    "default_bg_url": "/static/love/images/default_bg_xxx.jpg",
+    "default_music": "/static/love/audio/default_music_xxx.mp3",
+    "text_default": "今天也是值得被温柔对待的一天。",
+    "tags_default": ["心动", "温柔", "春天"],
+    "play_button_color": "#1a2b3c",
+    "text_default_color": "#1a2b3c",
+    "tags_color": "#1a2b3c",
+    "tags_bac_color": "#ffffff",
+    "date_color": "#1a2b3c"
+  }'
+```
+
+Upload image for a scene:
+
+```bash
+curl -X POST 'https://admin.example.com/api/admin/upload/image' \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -F 'scene_code=love' \
+  -F 'file=@/absolute/path/to/logo.png'
+```
+
+Upload audio for a scene:
+
+```bash
+curl -X POST 'https://admin.example.com/api/admin/upload/audio' \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -F 'scene_code=love' \
   -F 'file=@/absolute/path/to/music.mp3'
 ```
 
-Upload both files and reuse their returned URLs:
+## Manual Verification
+
+1. Create a host mapping:
 
 ```bash
-IMAGE_URL=$(curl -s -X POST 'http://<public-ip>:18080/api/admin/upload/image' \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -F 'file=@/absolute/path/to/bg.png' | jq -r '.data.url')
-```
-
-```bash
-AUDIO_URL=$(curl -s -X POST 'http://<public-ip>:18080/api/admin/upload/audio' \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -F 'file=@/absolute/path/to/music.mp3' | jq -r '.data.url')
-```
-
-Create content:
-
-```bash
-curl -X POST 'http://<public-ip>:18080/api/admin/content' \
+curl -X POST 'http://127.0.0.1:8080/api/admin/scene-domains' \
   -H "Authorization: Bearer ${TOKEN}" \
   -H 'Content-Type: application/json' \
   -d '{
-    "date": "2026-04-07",
-    "text": "今天也要被温柔对待呀",
-    "tags": ["心动", "温柔", "春天"],
-    "bg_url": "'"${IMAGE_URL}"'",
-    "music": "'"${AUDIO_URL}"'"
+    "host": "love.dapinsport.cn",
+    "scene_code": "love"
   }'
 ```
 
-Update content:
+2. Upload logo, banner, bac_img, and default background images with `POST /api/admin/upload/image` and copy the returned `data.url` values.
+
+3. Upload default music with `POST /api/admin/upload/audio` and copy the returned `data.url`.
+
+4. Create `scene_page_configs` for `scene_code=love` using those URLs.
+
+5. Create content for `scene_code=love`, `date=2026-04-07`.
+
+6. Request public scene page config through the mapped host:
 
 ```bash
-curl -X PUT 'http://<public-ip>:18080/api/admin/content/1' \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "date": "2026-04-08",
-    "text": "今天也要被温柔对待呀",
-    "tags": ["浪漫", "春天"],
-    "bg_url": "'"${IMAGE_URL}"'",
-    "music": "'"${AUDIO_URL}"'"
-  }'
+curl -H 'Host: love.dapinsport.cn' \
+  'http://127.0.0.1:8080/api/public/scene-page-config'
 ```
 
-Delete content:
+7. Request public content through the same host:
 
 ```bash
-curl -X DELETE 'http://<public-ip>:18080/api/admin/content/1' \
-  -H "Authorization: Bearer ${TOKEN}"
+curl -H 'Host: love.dapinsport.cn' \
+  'http://127.0.0.1:8080/api/public/content?date=2026-04-07'
 ```
 
-List content:
+8. Verify H5 renders the configured logo, banner, fallback background, fallback music, default text, default tags, and configured colors.
+
+9. Verify admin CRUD for scene page configs works.
+
+## Validation Commands
 
 ```bash
-curl 'http://<public-ip>:18080/api/admin/content?page=1&pageSize=10' \
-  -H "Authorization: Bearer ${TOKEN}"
+env GOCACHE=/tmp/go-build-cache GOMODCACHE=/tmp/go-mod-cache go test ./...
 ```
 
-Public content:
-
 ```bash
-curl 'http://<public-ip>:18080/api/public/content?date=2026-04-07'
+env GOCACHE=/tmp/go-build-cache GOMODCACHE=/tmp/go-mod-cache go build ./...
 ```
 
-Open a returned static URL directly:
-
 ```bash
-curl "${IMAGE_URL}"
-curl "${AUDIO_URL}"
-```
-
-## Firewall Notes
-
-Open these external ports in both the cloud security group and the local firewall if one is enabled:
-
-- `18080`
-- `28080`
-
-The backend ports `18081` and `28081` should remain bound to `127.0.0.1` and should not be opened publicly.
-
-## Validation
-
-```bash
-go test ./...
-go build ./...
 bash -n ./scripts/test.sh
 bash -n ./scripts/prod.sh
 ```

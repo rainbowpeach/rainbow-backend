@@ -13,14 +13,18 @@ type Response struct {
 }
 
 const (
-	CodeOK                  = 0
-	CodeInvalidParams       = 40001
-	CodeInvalidDateFormat   = 40002
-	CodeContentNotFound     = 40003
-	CodeUnauthorized        = 40004
-	CodeForbidden           = 40005
-	CodeDuplicateDate       = 40006
-	CodeInternalServerError = 50000
+	CodeOK                       = 0
+	CodeInvalidParams            = 40001
+	CodeInvalidDateFormat        = 40002
+	CodeContentNotFound          = 40003
+	CodeUnauthorized             = 40004
+	CodeForbidden                = 40005
+	CodeDuplicateDate            = 40006
+	CodeDuplicateHost            = 40007
+	CodeSceneDomainNotFound      = 40009
+	CodeDuplicateScenePageConfig = 40010
+	CodeScenePageConfigNotFound  = 40011
+	CodeInternalServerError      = 50000
 )
 
 func SuccessResponse(data any) Response {

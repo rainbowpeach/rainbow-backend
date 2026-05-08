@@ -5,10 +5,10 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
+	"rainbow-backend/internal/middleware"
 	"rainbow-backend/internal/model"
 	"rainbow-backend/internal/service"
 )
@@ -44,11 +44,14 @@ func (h *AdminUploadHandler) upload(c *gin.Context, uploadFn func(context.Contex
 
 	result, err := uploadFn(c.Request.Context(), &service.UploadRequest{
 		FileHeader: fileHeader,
-		BaseURL:    requestBaseURL(c.Request),
+		BaseURL:    middleware.RequestBaseURL(c.Request),
+		SceneCode:  c.PostForm("scene_code"),
 	})
 	if err != nil {
 		log.Printf("admin upload failed %s ip=%s path=%s filename=%q size=%d err=%v", adminActor(c), c.ClientIP(), c.Request.URL.Path, fileHeader.Filename, fileHeader.Size, err)
 		switch {
+		case errors.Is(err, service.ErrInvalidContentParams):
+			model.WriteError(c, http.StatusBadRequest, model.CodeInvalidParams, "invalid params")
 		case errors.Is(err, service.ErrFileRequired):
 			model.WriteError(c, http.StatusBadRequest, model.CodeInvalidParams, "file is required")
 		case errors.Is(err, service.ErrEmptyFile):
@@ -64,45 +67,15 @@ func (h *AdminUploadHandler) upload(c *gin.Context, uploadFn func(context.Contex
 	}
 
 	log.Printf(
-		"admin upload succeeded %s ip=%s path=%s filename=%q stored=%q size=%d content_type=%s",
+		"admin upload succeeded %s ip=%s path=%s scene=%q filename=%q stored=%q size=%d content_type=%s",
 		adminActor(c),
 		c.ClientIP(),
 		c.Request.URL.Path,
+		c.PostForm("scene_code"),
 		fileHeader.Filename,
 		result.Filename,
 		result.Size,
 		result.ContentType,
 	)
 	model.WriteOK(c, result)
-}
-
-func requestBaseURL(r *http.Request) string {
-	scheme := forwardedHeaderValue(r.Header.Get("X-Forwarded-Proto"))
-	if scheme == "" {
-		if r.TLS != nil {
-			scheme = "https"
-		} else {
-			scheme = "http"
-		}
-	}
-
-	host := forwardedHeaderValue(r.Header.Get("X-Forwarded-Host"))
-	if host == "" {
-		host = strings.TrimSpace(r.Host)
-	}
-
-	return scheme + "://" + host
-}
-
-func forwardedHeaderValue(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-
-	if idx := strings.Index(value, ","); idx >= 0 {
-		value = value[:idx]
-	}
-
-	return strings.TrimSpace(value)
 }
