@@ -60,12 +60,31 @@ func (s *ContentService) Create(ctx context.Context, req *model.ContentUpsertReq
 		Date:      req.Date,
 		Text:      req.Text,
 		Tags:      model.JSONStringArray(req.Tags),
+		ImageURLs: model.JSONStringArray(req.ImageURLs),
 		BgURL:     req.BgURL,
 		Music:     req.Music,
 	}
 	if err := s.contentRepo.Create(ctx, item); err != nil {
 		if isDuplicateDateError(err) {
-			return nil, ErrDuplicateDate
+			existing, getErr := s.contentRepo.GetBySceneAndDate(ctx, item.SceneCode, item.Date)
+			if getErr != nil {
+				if errors.Is(getErr, gorm.ErrRecordNotFound) {
+					return nil, ErrDuplicateDate
+				}
+				return nil, fmt.Errorf("get duplicate content: %w", getErr)
+			}
+			preserveEmptyContentFields(item, existing)
+			if err := s.contentRepo.UpdateByID(ctx, existing.ID, item); err != nil {
+				switch {
+				case errors.Is(err, gorm.ErrRecordNotFound):
+					return nil, ErrContentNotFound
+				case isDuplicateDateError(err):
+					return nil, ErrDuplicateDate
+				default:
+					return nil, fmt.Errorf("update duplicate content: %w", err)
+				}
+			}
+			return &model.IDResponse{ID: existing.ID}, nil
 		}
 		return nil, fmt.Errorf("create content: %w", err)
 	}
@@ -78,14 +97,24 @@ func (s *ContentService) Update(ctx context.Context, id uint, req *model.Content
 		return nil, err
 	}
 
+	existing, err := s.contentRepo.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrContentNotFound
+		}
+		return nil, fmt.Errorf("get content: %w", err)
+	}
+
 	item := &model.ContentItem{
 		SceneCode: model.NormalizeSceneCode(req.SceneCode),
 		Date:      req.Date,
 		Text:      req.Text,
 		Tags:      model.JSONStringArray(req.Tags),
+		ImageURLs: model.JSONStringArray(req.ImageURLs),
 		BgURL:     req.BgURL,
 		Music:     req.Music,
 	}
+	preserveEmptyContentFields(item, existing)
 	if err := s.contentRepo.UpdateByID(ctx, id, item); err != nil {
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):
@@ -172,10 +201,35 @@ func validateContentUpsert(req *model.ContentUpsertRequest) error {
 		}
 		req.Tags[i] = normalizedTag
 	}
+	for i, imageURL := range req.ImageURLs {
+		normalizedImageURL := strings.TrimSpace(imageURL)
+		if normalizedImageURL == "" {
+			return ErrInvalidContentParams
+		}
+		req.ImageURLs[i] = normalizedImageURL
+	}
 	req.Text = strings.TrimSpace(req.Text)
 	req.BgURL = strings.TrimSpace(req.BgURL)
 	req.Music = strings.TrimSpace(req.Music)
 	return nil
+}
+
+func preserveEmptyContentFields(item, existing *model.ContentItem) {
+	if item.Text == "" {
+		item.Text = existing.Text
+	}
+	if len(item.Tags) == 0 {
+		item.Tags = existing.Tags
+	}
+	if len(item.ImageURLs) == 0 {
+		item.ImageURLs = existing.ImageURLs
+	}
+	if item.BgURL == "" {
+		item.BgURL = existing.BgURL
+	}
+	if item.Music == "" {
+		item.Music = existing.Music
+	}
 }
 
 func isDuplicateDateError(err error) bool {

@@ -24,6 +24,7 @@ const (
 	CodeSceneDomainNotFound      = 40009
 	CodeDuplicateScenePageConfig = 40010
 	CodeScenePageConfigNotFound  = 40011
+	CodeUserNotFound             = 40012
 	CodeInternalServerError      = 50000
 )
 

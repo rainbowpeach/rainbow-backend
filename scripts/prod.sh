@@ -50,6 +50,25 @@ else
   sudo install -m 0640 "${ENV_SOURCE}" "${ENV_TARGET}"
 fi
 
+require_env_value() {
+  local key="$1"
+  if ! sudo awk -F= -v expected_key="${key}" '
+    $1 == expected_key && substr($0, index($0, "=") + 1) != "" {
+      found = 1
+    }
+    END {
+      exit(found ? 0 : 1)
+    }
+  ' "${ENV_TARGET}"; then
+    echo "ERROR: ${ENV_TARGET} must define ${key} before starting ${SERVICE_NAME}."
+    exit 1
+  fi
+}
+
+require_env_value "WECHAT_MINIPROGRAM_APP_ID"
+require_env_value "WECHAT_MINIPROGRAM_APP_SECRET"
+require_env_value "WECHAT_JSCODE2SESSION_URL"
+
 echo "Installing systemd unit: ${SERVICE_TARGET}"
 sudo install -m 0644 "${SERVICE_SOURCE}" "${SERVICE_TARGET}"
 

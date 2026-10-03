@@ -29,6 +29,14 @@ func (h *AdminUploadHandler) UploadAudio(c *gin.Context) {
 	h.upload(c, h.uploadService.UploadAudio)
 }
 
+func (h *AdminUploadHandler) UploadVideo(c *gin.Context) {
+	h.upload(c, h.uploadService.UploadVideo)
+}
+
+func (h *AdminUploadHandler) UploadAvatar(c *gin.Context) {
+	h.upload(c, h.uploadService.UploadSceneAvatar)
+}
+
 func (h *AdminUploadHandler) upload(c *gin.Context, uploadFn func(context.Context, *service.UploadRequest) (*model.UploadResponse, error)) {
 	fileHeader, err := c.FormFile("file")
 	if err != nil {

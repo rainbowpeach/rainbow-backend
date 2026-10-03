@@ -64,6 +64,9 @@ func TestPublicScenePageConfigReturnsHostResolvedConfig(t *testing.T) {
 			DefaultBgURL:     "/static/love/images/default_bg.png",
 			DefaultMusic:     "/static/love/audio/default_music.mp3",
 			TagsDefault:      model.JSONStringArray{"heart"},
+			ImageURLs:        model.JSONStringArray{"/static/love/images/1.png"},
+			VideoURL:         "/static/love/videos/intro.mp4",
+			AvatarURL:        "/static/love/avatars/avatar.png",
 			PlayButtonColor:  "#123456",
 			TextDefaultColor: "#ffffff",
 		},
@@ -115,8 +118,84 @@ func TestPublicScenePageConfigReturnsHostResolvedConfig(t *testing.T) {
 	if resp.Data.DefaultMusic != "/static/love/audio/default_music.mp3" {
 		t.Fatalf("expected default_music to be returned, got %q", resp.Data.DefaultMusic)
 	}
+	if len(resp.Data.ImageURLs) != 1 || resp.Data.ImageURLs[0] != "/static/love/images/1.png" {
+		t.Fatalf("expected image_urls to be returned, got %#v", resp.Data.ImageURLs)
+	}
+	if resp.Data.VideoURL != "/static/love/videos/intro.mp4" {
+		t.Fatalf("expected video_url to be returned, got %q", resp.Data.VideoURL)
+	}
+	if resp.Data.AvatarURL != "/static/love/avatars/avatar.png" {
+		t.Fatalf("expected avatar_url to be returned, got %q", resp.Data.AvatarURL)
+	}
 	if scenePageConfigRepo.getScene != "love" {
 		t.Fatalf("expected config lookup by scene love, got %q", scenePageConfigRepo.getScene)
+	}
+}
+
+func TestPublicScenePageConfigUsesSceneOverrideWhenEnabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	scenePageConfigRepo := &stubHandlerScenePageConfigRepo{
+		item: &model.ScenePageConfig{
+			SceneCode:    "cluo7",
+			DefaultBgURL: "/static/cluo7/images/default_bg.png",
+			DefaultMusic: "/static/cluo7/audio/default_music.mp3",
+			TagsDefault:  model.JSONStringArray{"cluo7"},
+			ImageURLs:    model.JSONStringArray{"/static/cluo7/images/1.png"},
+			VideoURL:     "/static/cluo7/videos/intro.mp4",
+			AvatarURL:    "/static/cluo7/avatars/avatar.png",
+		},
+	}
+	sceneRepo := &stubPublicSceneDomainRepo{getErr: gorm.ErrRecordNotFound}
+
+	handler := NewPublicContentHandler(
+		service.NewContentService(&stubHandlerContentRepo{}),
+		service.NewScenePageConfigService(scenePageConfigRepo),
+		service.NewSceneResolver(sceneRepo),
+		config.SceneConfig{EnablePublicOverride: true},
+	)
+
+	router := gin.New()
+	router.GET("/api/public/scene-page-config", handler.GetScenePageConfig)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/public/scene-page-config?scene=cluo7", nil)
+	req.Host = "unknown.example.com"
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var resp struct {
+		Code int                           `json:"code"`
+		Data model.ScenePageConfigResponse `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	if resp.Code != model.CodeOK {
+		t.Fatalf("expected response code 0, got %d", resp.Code)
+	}
+	if resp.Data.SceneCode != "cluo7" {
+		t.Fatalf("expected scene_code cluo7, got %q", resp.Data.SceneCode)
+	}
+	if len(resp.Data.ImageURLs) != 1 || resp.Data.ImageURLs[0] != "/static/cluo7/images/1.png" {
+		t.Fatalf("expected image_urls to be returned, got %#v", resp.Data.ImageURLs)
+	}
+	if resp.Data.VideoURL != "/static/cluo7/videos/intro.mp4" {
+		t.Fatalf("expected video_url to be returned, got %q", resp.Data.VideoURL)
+	}
+	if resp.Data.AvatarURL != "/static/cluo7/avatars/avatar.png" {
+		t.Fatalf("expected avatar_url to be returned, got %q", resp.Data.AvatarURL)
+	}
+	if scenePageConfigRepo.getScene != "cluo7" {
+		t.Fatalf("expected config lookup by scene cluo7, got %q", scenePageConfigRepo.getScene)
+	}
+	if sceneRepo.gotHost != "" {
+		t.Fatalf("expected host resolver to be bypassed, got host %q", sceneRepo.gotHost)
 	}
 }
 

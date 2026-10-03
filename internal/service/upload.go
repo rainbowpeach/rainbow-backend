@@ -59,11 +59,46 @@ func (s *UploadService) uploadImage(_ context.Context, req *UploadRequest) (*mod
 	if err != nil {
 		return nil, err
 	}
-	category := uploadCategory{
-		subdir:     "images",
-		publicPath: "/static/" + sceneCode + "/images/",
-		maxSize:    s.cfg.ImageMaxSize,
+	return s.uploadImageFile(
+		req,
+		filepath.Join(s.cfg.RootDir, sceneCode, "images"),
+		"/static/"+sceneCode+"/images/",
+		s.cfg.ImageMaxSize,
+	)
+}
+
+func (s *UploadService) UploadAvatar(ctx context.Context, req *UploadRequest) (*model.UploadResponse, error) {
+	return s.uploadAvatar(ctx, req)
+}
+
+func (s *UploadService) uploadAvatar(_ context.Context, req *UploadRequest) (*model.UploadResponse, error) {
+	return s.uploadImageFile(
+		req,
+		filepath.Join(s.cfg.RootDir, "user", "avatars"),
+		"/static/user/avatars/",
+		s.cfg.ImageMaxSize,
+	)
+}
+
+func (s *UploadService) UploadSceneAvatar(ctx context.Context, req *UploadRequest) (*model.UploadResponse, error) {
+	return s.uploadSceneAvatar(ctx, req)
+}
+
+func (s *UploadService) uploadSceneAvatar(_ context.Context, req *UploadRequest) (*model.UploadResponse, error) {
+	sceneCode, err := uploadSceneCode(req)
+	if err != nil {
+		return nil, err
 	}
+
+	return s.uploadImageFile(
+		req,
+		filepath.Join(s.cfg.RootDir, sceneCode, "avatars"),
+		"/static/"+sceneCode+"/avatars/",
+		s.cfg.ImageMaxSize,
+	)
+}
+
+func (s *UploadService) uploadImageFile(req *UploadRequest, targetDir, publicPath string, maxSize int64) (*model.UploadResponse, error) {
 
 	if req == nil || req.FileHeader == nil {
 		return nil, ErrFileRequired
@@ -71,7 +106,7 @@ func (s *UploadService) uploadImage(_ context.Context, req *UploadRequest) (*mod
 	if req.FileHeader.Size <= 0 {
 		return nil, ErrEmptyFile
 	}
-	if req.FileHeader.Size > category.maxSize {
+	if req.FileHeader.Size > maxSize {
 		return nil, ErrFileTooLarge
 	}
 
@@ -92,7 +127,6 @@ func (s *UploadService) uploadImage(_ context.Context, req *UploadRequest) (*mod
 		return nil, err
 	}
 
-	targetDir := filepath.Join(s.cfg.RootDir, sceneCode, category.subdir)
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create upload directory: %w", err)
 	}
@@ -107,7 +141,64 @@ func (s *UploadService) uploadImage(_ context.Context, req *UploadRequest) (*mod
 	}
 
 	return &model.UploadResponse{
-		URL:         joinPublicURL(req.BaseURL, category.publicPath, storedName),
+		URL:         joinPublicURL(req.BaseURL, publicPath, storedName),
+		Filename:    storedName,
+		Size:        req.FileHeader.Size,
+		ContentType: contentType,
+	}, nil
+}
+
+func (s *UploadService) UploadVideo(ctx context.Context, req *UploadRequest) (*model.UploadResponse, error) {
+	return s.uploadVideo(ctx, req)
+}
+
+func (s *UploadService) uploadVideo(_ context.Context, req *UploadRequest) (*model.UploadResponse, error) {
+	sceneCode, err := uploadSceneCode(req)
+	if err != nil {
+		return nil, err
+	}
+	if req == nil || req.FileHeader == nil {
+		return nil, ErrFileRequired
+	}
+	if req.FileHeader.Size <= 0 {
+		return nil, ErrEmptyFile
+	}
+	if req.FileHeader.Size > s.cfg.VideoMaxSize {
+		return nil, ErrFileTooLarge
+	}
+
+	originalName := sanitizeFilename(req.FileHeader.Filename)
+	originalExt := strings.ToLower(filepath.Ext(originalName))
+	contentType, err := sniffActualVideoContentType(req.FileHeader)
+	if err != nil {
+		return nil, err
+	}
+
+	standardExt, ok := videoExtByContentType(contentType)
+	if !ok {
+		return nil, unsupportedFileTypeError(
+			originalExt,
+			req.FileHeader.Header.Get("Content-Type"),
+			contentType,
+		)
+	}
+
+	targetDir := filepath.Join(s.cfg.RootDir, sceneCode, "videos")
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create upload directory: %w", err)
+	}
+
+	storedName, targetPath, err := createTargetFile(targetDir, standardExt)
+	if err != nil {
+		return nil, fmt.Errorf("create target file: %w", err)
+	}
+
+	if err := copyUploadedFile(req.FileHeader, targetPath); err != nil {
+		return nil, fmt.Errorf("save uploaded file: %w", err)
+	}
+
+	return &model.UploadResponse{
+		URL:         joinPublicURL(req.BaseURL, "/static/"+sceneCode+"/videos/", storedName),
 		Filename:    storedName,
 		Size:        req.FileHeader.Size,
 		ContentType: contentType,
@@ -329,6 +420,76 @@ func allowedImageContentTypesByExt() map[string]map[string]struct{} {
 		".jpeg": contentTypeSet("image/jpeg"),
 		".png":  contentTypeSet("image/png"),
 		".webp": contentTypeSet("image/webp"),
+	}
+}
+
+func sniffActualVideoContentType(fileHeader *multipart.FileHeader) (string, error) {
+	file, err := fileHeader.Open()
+	if err != nil {
+		return "", fmt.Errorf("open uploaded file: %w", err)
+	}
+	defer file.Close()
+
+	buffer, err := io.ReadAll(io.LimitReader(file, contentTypeSniffBytes))
+	if err != nil {
+		return "", fmt.Errorf("read uploaded file header: %w", err)
+	}
+	if len(buffer) == 0 {
+		return "", ErrEmptyFile
+	}
+
+	declared := normalizeContentType(fileHeader.Header.Get("Content-Type"))
+	detected := normalizeContentType(http.DetectContentType(buffer[:min(len(buffer), 512)]))
+
+	if isSupportedVideoContentType(detected) {
+		return normalizeVideoContentType(detected), nil
+	}
+	if looksLikeWebM(buffer) {
+		return "video/webm", nil
+	}
+	if looksLikeISOBaseMedia(buffer) {
+		if looksLikeQuickTime(buffer) {
+			return "video/quicktime", nil
+		}
+		return "video/mp4", nil
+	}
+	if detected == "application/octet-stream" && isSupportedVideoContentType(declared) {
+		return normalizeVideoContentType(declared), nil
+	}
+
+	return "", unsupportedFileTypeError("", declared, detected)
+}
+
+func videoExtByContentType(contentType string) (string, bool) {
+	switch normalizeVideoContentType(contentType) {
+	case "video/mp4":
+		return ".mp4", true
+	case "video/webm":
+		return ".webm", true
+	case "video/quicktime":
+		return ".mov", true
+	default:
+		return "", false
+	}
+}
+
+func isSupportedVideoContentType(contentType string) bool {
+	switch normalizeVideoContentType(contentType) {
+	case "video/mp4", "video/webm", "video/quicktime":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeVideoContentType(contentType string) string {
+	switch normalizeContentType(contentType) {
+	case "video/x-m4v":
+		return "video/mp4"
+	case "video/mov":
+		return "video/quicktime"
+	default:
+		return normalizeContentType(contentType)
 	}
 }
 
@@ -628,6 +789,22 @@ func looksLikeMP4Audio(buffer []byte) bool {
 	}
 
 	return false
+}
+
+func looksLikeISOBaseMedia(buffer []byte) bool {
+	return len(buffer) >= 12 && bytes.Equal(buffer[4:8], []byte("ftyp"))
+}
+
+func looksLikeQuickTime(buffer []byte) bool {
+	return len(buffer) >= 12 && bytes.Equal(buffer[8:12], []byte("qt  "))
+}
+
+func looksLikeWebM(buffer []byte) bool {
+	return len(buffer) >= 4 &&
+		buffer[0] == 0x1a &&
+		buffer[1] == 0x45 &&
+		buffer[2] == 0xdf &&
+		buffer[3] == 0xa3
 }
 
 // =========================

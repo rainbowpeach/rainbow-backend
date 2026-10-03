@@ -54,12 +54,111 @@ func TestUploadServiceUploadImageSuccess(t *testing.T) {
 	}
 }
 
+func TestUploadServiceUploadAvatarSuccess(t *testing.T) {
+	rootDir := t.TempDir()
+	service := NewUploadService(config.UploadConfig{
+		RootDir:      rootDir,
+		ImageMaxSize: 10 * 1024 * 1024,
+		AudioMaxSize: 20 * 1024 * 1024,
+	})
+
+	fileHeader := newMultipartFileHeader(t, "file", "avatar.PNG", "image/png", pngFixture())
+	result, err := service.UploadAvatar(context.Background(), &UploadRequest{
+		FileHeader: fileHeader,
+		BaseURL:    "https://dapinsport.cn",
+		SceneCode:  "should-not-be-used",
+	})
+	if err != nil {
+		t.Fatalf("UploadAvatar() error = %v", err)
+	}
+
+	if !strings.HasPrefix(result.URL, "https://dapinsport.cn/static/user/avatars/") {
+		t.Fatalf("expected avatar URL prefix, got %q", result.URL)
+	}
+	if filepath.Ext(result.Filename) != ".png" {
+		t.Fatalf("expected stored extension .png, got %q", result.Filename)
+	}
+
+	savedPath := filepath.Join(rootDir, "user", "avatars", result.Filename)
+	if _, err := os.Stat(savedPath); err != nil {
+		t.Fatalf("expected saved avatar, got stat error %v", err)
+	}
+}
+
+func TestUploadServiceUploadSceneAvatarSuccess(t *testing.T) {
+	rootDir := t.TempDir()
+	service := NewUploadService(config.UploadConfig{
+		RootDir:      rootDir,
+		ImageMaxSize: 10 * 1024 * 1024,
+		AudioMaxSize: 20 * 1024 * 1024,
+		VideoMaxSize: 500 * 1024 * 1024,
+	})
+
+	fileHeader := newMultipartFileHeader(t, "file", "avatar.PNG", "image/png", pngFixture())
+	result, err := service.UploadSceneAvatar(context.Background(), &UploadRequest{
+		FileHeader: fileHeader,
+		BaseURL:    "https://admin.example.com",
+		SceneCode:  "love",
+	})
+	if err != nil {
+		t.Fatalf("UploadSceneAvatar() error = %v", err)
+	}
+
+	if !strings.HasPrefix(result.URL, "https://admin.example.com/static/love/avatars/") {
+		t.Fatalf("expected scene avatar URL prefix, got %q", result.URL)
+	}
+	if filepath.Ext(result.Filename) != ".png" {
+		t.Fatalf("expected stored extension .png, got %q", filepath.Ext(result.Filename))
+	}
+
+	savedPath := filepath.Join(rootDir, "love", "avatars", result.Filename)
+	if _, err := os.Stat(savedPath); err != nil {
+		t.Fatalf("expected saved scene avatar, got stat error %v", err)
+	}
+}
+
+func TestUploadServiceUploadVideoSuccess(t *testing.T) {
+	rootDir := t.TempDir()
+	service := NewUploadService(config.UploadConfig{
+		RootDir:      rootDir,
+		ImageMaxSize: 10 * 1024 * 1024,
+		AudioMaxSize: 20 * 1024 * 1024,
+		VideoMaxSize: 500 * 1024 * 1024,
+	})
+
+	fileHeader := newMultipartFileHeader(t, "file", "intro.bin", "application/octet-stream", mp4VideoFixture())
+	result, err := service.UploadVideo(context.Background(), &UploadRequest{
+		FileHeader: fileHeader,
+		BaseURL:    "https://admin.example.com",
+		SceneCode:  "love",
+	})
+	if err != nil {
+		t.Fatalf("UploadVideo() error = %v", err)
+	}
+
+	if !strings.HasPrefix(result.URL, "https://admin.example.com/static/love/videos/") {
+		t.Fatalf("expected video URL prefix, got %q", result.URL)
+	}
+	if filepath.Ext(result.Filename) != ".mp4" {
+		t.Fatalf("expected stored extension .mp4, got %q", filepath.Ext(result.Filename))
+	}
+	if result.ContentType != "video/mp4" {
+		t.Fatalf("expected video/mp4 content type, got %q", result.ContentType)
+	}
+
+	savedPath := filepath.Join(rootDir, "love", "videos", result.Filename)
+	if _, err := os.Stat(savedPath); err != nil {
+		t.Fatalf("expected saved video, got stat error %v", err)
+	}
+}
+
 func TestUploadServiceUploadAudioSuccess(t *testing.T) {
 	rootDir := t.TempDir()
 	service := NewUploadService(config.UploadConfig{
 		RootDir:      rootDir,
 		ImageMaxSize: 10 * 1024 * 1024,
 		AudioMaxSize: 20 * 1024 * 1024,
+		VideoMaxSize: 500 * 1024 * 1024,
 	})
 
 	fileHeader := newMultipartFileHeader(t, "file", "sound.wav", "audio/wav", wavFixture())
@@ -89,6 +188,7 @@ func TestUploadServiceUploadAudioMP3FrameHeaderSuccess(t *testing.T) {
 		RootDir:      rootDir,
 		ImageMaxSize: 10 * 1024 * 1024,
 		AudioMaxSize: 20 * 1024 * 1024,
+		VideoMaxSize: 500 * 1024 * 1024,
 	})
 
 	fileHeader := newMultipartFileHeader(t, "file", "sound.mp3", "audio/mpeg", mp3FrameFixture())
@@ -128,6 +228,7 @@ func TestUploadServiceRejectsUnsupportedFileType(t *testing.T) {
 		RootDir:      t.TempDir(),
 		ImageMaxSize: 10 * 1024 * 1024,
 		AudioMaxSize: 20 * 1024 * 1024,
+		VideoMaxSize: 500 * 1024 * 1024,
 	})
 
 	fileHeader := newMultipartFileHeader(t, "file", "cover.png", "image/png", []byte("plain text"))
@@ -146,6 +247,7 @@ func TestUploadServiceRejectsFakeMP3WithDeclaredAudioType(t *testing.T) {
 		RootDir:      t.TempDir(),
 		ImageMaxSize: 10 * 1024 * 1024,
 		AudioMaxSize: 20 * 1024 * 1024,
+		VideoMaxSize: 500 * 1024 * 1024,
 	})
 
 	fileHeader := newMultipartFileHeader(t, "file", "sound.mp3", "audio/mpeg", []byte("plain text"))
@@ -164,6 +266,7 @@ func TestUploadServiceRejectsOversizedFile(t *testing.T) {
 		RootDir:      t.TempDir(),
 		ImageMaxSize: 8,
 		AudioMaxSize: 20 * 1024 * 1024,
+		VideoMaxSize: 500 * 1024 * 1024,
 	})
 
 	fileHeader := newMultipartFileHeader(t, "file", "cover.png", "image/png", pngFixture())
@@ -183,6 +286,7 @@ func TestUploadServiceDefaultsSceneCode(t *testing.T) {
 		RootDir:      rootDir,
 		ImageMaxSize: 10 * 1024 * 1024,
 		AudioMaxSize: 20 * 1024 * 1024,
+		VideoMaxSize: 100 * 1024 * 1024,
 	})
 
 	fileHeader := newMultipartFileHeader(t, "file", "cover.PNG", "image/png", pngFixture())
@@ -238,6 +342,17 @@ func pngFixture() []byte {
 		0x02, 0x00, 0x01, 0xe5, 0x27, 0xd4, 0xa2, 0x00,
 		0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
 		0x42, 0x60, 0x82,
+	}
+}
+
+func mp4VideoFixture() []byte {
+	return []byte{
+		0x00, 0x00, 0x00, 0x18,
+		'f', 't', 'y', 'p',
+		'i', 's', 'o', 'm',
+		0x00, 0x00, 0x02, 0x00,
+		'i', 's', 'o', 'm',
+		'i', 's', 'o', '2',
 	}
 }
 

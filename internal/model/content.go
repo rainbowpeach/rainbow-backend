@@ -8,6 +8,7 @@ type ContentItem struct {
 	Date      string          `gorm:"size:10;not null;uniqueIndex:idx_content_scene_date" json:"date"`
 	Text      string          `gorm:"type:text" json:"text"`
 	Tags      JSONStringArray `gorm:"type:json" json:"tags"`
+	ImageURLs JSONStringArray `gorm:"column:image_urls;type:json" json:"image_urls"`
 	BgURL     string          `gorm:"column:bg_url;type:text" json:"bg_url"`
 	Music     string          `gorm:"type:text" json:"music"`
 	CreatedAt time.Time       `json:"createdAt"`
@@ -23,6 +24,7 @@ type ContentUpsertRequest struct {
 	Date      string   `json:"date" binding:"required"`
 	Text      string   `json:"text"`
 	Tags      []string `json:"tags"`
+	ImageURLs []string `json:"image_urls"`
 	BgURL     string   `json:"bg_url"`
 	Music     string   `json:"music"`
 }
@@ -33,6 +35,7 @@ type ContentResponse struct {
 	Date      string   `json:"date"`
 	Text      string   `json:"text"`
 	Tags      []string `json:"tags"`
+	ImageURLs []string `json:"image_urls"`
 	BgURL     string   `json:"bg_url"`
 	Music     string   `json:"music"`
 	CreatedAt string   `json:"createdAt"`
@@ -48,6 +51,10 @@ func NewContentResponse(item *ContentItem) *ContentResponse {
 	if tags == nil {
 		tags = []string{}
 	}
+	imageURLs := []string(item.ImageURLs)
+	if imageURLs == nil {
+		imageURLs = []string{}
+	}
 
 	return &ContentResponse{
 		ID:        item.ID,
@@ -55,6 +62,7 @@ func NewContentResponse(item *ContentItem) *ContentResponse {
 		Date:      item.Date,
 		Text:      item.Text,
 		Tags:      tags,
+		ImageURLs: imageURLs,
 		BgURL:     item.BgURL,
 		Music:     item.Music,
 		CreatedAt: item.CreatedAt.Format("2006-01-02"),

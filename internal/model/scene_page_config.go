@@ -19,6 +19,9 @@ type ScenePageConfig struct {
 	DefaultMusic     string          `gorm:"column:default_music;size:1024" json:"default_music"`
 	TextDefault      string          `gorm:"column:text_default;type:text" json:"text_default"`
 	TagsDefault      JSONStringArray `gorm:"column:tags_default;type:json;not null" json:"tags_default"`
+	ImageURLs        JSONStringArray `gorm:"column:image_urls;type:json" json:"image_urls"`
+	VideoURL         string          `gorm:"column:video_url;size:1024" json:"video_url"`
+	AvatarURL        string          `gorm:"column:avatar_url;size:1024" json:"avatar_url"`
 	PlayButtonColor  string          `gorm:"column:play_button_color;size:32" json:"play_button_color"`
 	TextDefaultColor string          `gorm:"column:text_default_color;size:32" json:"text_default_color"`
 	TagsColor        string          `gorm:"column:tags_color;size:32" json:"tags_color"`
@@ -41,6 +44,9 @@ type ScenePageConfigUpsertRequest struct {
 	DefaultMusic     string   `json:"default_music"`
 	TextDefault      string   `json:"text_default"`
 	TagsDefault      []string `json:"tags_default"`
+	ImageURLs        []string `json:"image_urls"`
+	VideoURL         string   `json:"video_url"`
+	AvatarURL        string   `json:"avatar_url"`
 	PlayButtonColor  string   `json:"play_button_color"`
 	TextDefaultColor string   `json:"text_default_color"`
 	TagsColor        string   `json:"tags_color"`
@@ -57,6 +63,9 @@ type ScenePageConfigResponse struct {
 	DefaultMusic     string   `json:"default_music"`
 	TextDefault      string   `json:"text_default"`
 	TagsDefault      []string `json:"tags_default"`
+	ImageURLs        []string `json:"image_urls"`
+	VideoURL         string   `json:"video_url"`
+	AvatarURL        string   `json:"avatar_url"`
 	PlayButtonColor  string   `json:"play_button_color"`
 	TextDefaultColor string   `json:"text_default_color"`
 	TagsColor        string   `json:"tags_color"`
@@ -73,6 +82,10 @@ func NewScenePageConfigResponse(item *ScenePageConfig) *ScenePageConfigResponse 
 	if tags == nil {
 		tags = []string{}
 	}
+	imageURLs := []string(item.ImageURLs)
+	if imageURLs == nil {
+		imageURLs = []string{}
+	}
 
 	return &ScenePageConfigResponse{
 		SceneCode:        item.SceneCode,
@@ -83,6 +96,9 @@ func NewScenePageConfigResponse(item *ScenePageConfig) *ScenePageConfigResponse 
 		DefaultMusic:     item.DefaultMusic,
 		TextDefault:      item.TextDefault,
 		TagsDefault:      tags,
+		ImageURLs:        imageURLs,
+		VideoURL:         item.VideoURL,
+		AvatarURL:        item.AvatarURL,
 		PlayButtonColor:  item.PlayButtonColor,
 		TextDefaultColor: item.TextDefaultColor,
 		TagsColor:        item.TagsColor,

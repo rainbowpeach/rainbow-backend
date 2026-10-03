@@ -6,9 +6,9 @@ import (
 )
 
 func RequestHost(r *http.Request) string {
-	host := ForwardedHeaderValue(r.Header.Get("X-Forwarded-Host"))
+	host := strings.TrimSpace(r.Host)
 	if host == "" {
-		host = strings.TrimSpace(r.Host)
+		host = ForwardedHeaderValue(r.Header.Get("X-Forwarded-Host"))
 	}
 
 	return host

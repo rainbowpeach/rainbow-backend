@@ -25,6 +25,7 @@ type Config struct {
 	AllowOrigins  []string
 	Upload        UploadConfig
 	Scene         SceneConfig
+	WeChat        WeChatMiniProgramConfig
 }
 
 type DatabaseConfig struct {
@@ -40,10 +41,18 @@ type UploadConfig struct {
 	RootDir      string
 	ImageMaxSize int64
 	AudioMaxSize int64
+	VideoMaxSize int64
 }
 
 type SceneConfig struct {
 	EnablePublicOverride bool
+}
+
+type WeChatMiniProgramConfig struct {
+	AppID              string
+	AppSecret          string
+	JSCode2SessionURL  string
+	UserTokenExpiresIn int64
 }
 
 func Load() (Config, error) {
@@ -71,9 +80,16 @@ func Load() (Config, error) {
 			RootDir:      filepath.Clean(getEnv("UPLOAD_ROOT", defaultUploadRoot(appEnv))),
 			ImageMaxSize: getEnvInt64("UPLOAD_IMAGE_MAX_SIZE", 50*1024*1024),
 			AudioMaxSize: getEnvInt64("UPLOAD_AUDIO_MAX_SIZE", 50*1024*1024),
+			VideoMaxSize: getEnvInt64("UPLOAD_VIDEO_MAX_SIZE", 500*1024*1024),
 		},
 		Scene: SceneConfig{
 			EnablePublicOverride: getEnvBool("ENABLE_PUBLIC_SCENE_OVERRIDE", false),
+		},
+		WeChat: WeChatMiniProgramConfig{
+			AppID:              getEnv("WECHAT_MINIPROGRAM_APP_ID", ""),
+			AppSecret:          getEnv("WECHAT_MINIPROGRAM_APP_SECRET", ""),
+			JSCode2SessionURL:  getEnv("WECHAT_JSCODE2SESSION_URL", "https://api.weixin.qq.com/sns/jscode2session"),
+			UserTokenExpiresIn: getEnvInt64("WECHAT_USER_TOKEN_EXPIRES_IN", 30*24*60*60),
 		},
 	}
 
@@ -120,6 +136,21 @@ func (c Config) Validate() error {
 	}
 	if c.Upload.AudioMaxSize <= 0 {
 		return errors.New("UPLOAD_AUDIO_MAX_SIZE must be greater than 0")
+	}
+	if c.Upload.VideoMaxSize <= 0 {
+		return errors.New("UPLOAD_VIDEO_MAX_SIZE must be greater than 0")
+	}
+	if c.WeChat.AppID == "" {
+		return errors.New("WECHAT_MINIPROGRAM_APP_ID is required")
+	}
+	if c.WeChat.AppSecret == "" {
+		return errors.New("WECHAT_MINIPROGRAM_APP_SECRET is required")
+	}
+	if c.WeChat.JSCode2SessionURL == "" {
+		return errors.New("WECHAT_JSCODE2SESSION_URL is required")
+	}
+	if c.WeChat.UserTokenExpiresIn <= 0 {
+		return errors.New("WECHAT_USER_TOKEN_EXPIRES_IN must be greater than 0")
 	}
 	if c.isProduction() {
 		if isInsecureSecret(c.JWTSecret) {

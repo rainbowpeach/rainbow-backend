@@ -79,6 +79,9 @@ func TestScenePageConfigServiceCreateSuccess(t *testing.T) {
 		DefaultMusic:     "/static/love/audio/default_music.mp3",
 		TextDefault:      "hello",
 		TagsDefault:      []string{"warm", "spring"},
+		ImageURLs:        []string{" /static/love/images/1.png ", "/static/love/images/2.png"},
+		VideoURL:         " /static/love/videos/intro.mp4 ",
+		AvatarURL:        " /static/love/avatars/avatar.png ",
 		PlayButtonColor:  "#1A2B3C",
 		TextDefaultColor: "#ffffff",
 		TagsColor:        "#111111",
@@ -104,6 +107,15 @@ func TestScenePageConfigServiceCreateSuccess(t *testing.T) {
 	if repo.createdItem.DefaultMusic != "/static/love/audio/default_music.mp3" {
 		t.Fatalf("expected default_music to pass through, got %q", repo.createdItem.DefaultMusic)
 	}
+	if len(repo.createdItem.ImageURLs) != 2 || repo.createdItem.ImageURLs[0] != "/static/love/images/1.png" {
+		t.Fatalf("expected image_urls to pass through, got %#v", repo.createdItem.ImageURLs)
+	}
+	if repo.createdItem.VideoURL != "/static/love/videos/intro.mp4" {
+		t.Fatalf("expected video_url to pass through, got %q", repo.createdItem.VideoURL)
+	}
+	if repo.createdItem.AvatarURL != "/static/love/avatars/avatar.png" {
+		t.Fatalf("expected avatar_url to pass through, got %q", repo.createdItem.AvatarURL)
+	}
 }
 
 func TestScenePageConfigServiceCreateRejectsInvalidColor(t *testing.T) {
@@ -124,6 +136,30 @@ func TestScenePageConfigServiceCreateRejectsInvalidTags(t *testing.T) {
 	_, err := service.Create(context.Background(), &model.ScenePageConfigUpsertRequest{
 		SceneCode:   "love",
 		TagsDefault: []string{"ok", " "},
+	})
+	if !errors.Is(err, ErrInvalidScenePageConfigParams) {
+		t.Fatalf("expected ErrInvalidScenePageConfigParams, got %v", err)
+	}
+}
+
+func TestScenePageConfigServiceCreateRejectsBlankImageURLs(t *testing.T) {
+	service := NewScenePageConfigService(&stubScenePageConfigRepo{})
+
+	_, err := service.Create(context.Background(), &model.ScenePageConfigUpsertRequest{
+		SceneCode: "love",
+		ImageURLs: []string{" ", "/static/love/images/1.png"},
+	})
+	if !errors.Is(err, ErrInvalidScenePageConfigParams) {
+		t.Fatalf("expected ErrInvalidScenePageConfigParams, got %v", err)
+	}
+}
+
+func TestScenePageConfigServiceCreateRejectsInvalidMediaURL(t *testing.T) {
+	service := NewScenePageConfigService(&stubScenePageConfigRepo{})
+
+	_, err := service.Create(context.Background(), &model.ScenePageConfigUpsertRequest{
+		SceneCode: "love",
+		VideoURL:  "javascript:alert(1)",
 	})
 	if !errors.Is(err, ErrInvalidScenePageConfigParams) {
 		t.Fatalf("expected ErrInvalidScenePageConfigParams, got %v", err)

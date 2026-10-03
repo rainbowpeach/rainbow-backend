@@ -37,6 +37,13 @@ func (r *stubHandlerContentRepo) GetBySceneAndDate(_ context.Context, sceneCode,
 	return r.item, nil
 }
 
+func (r *stubHandlerContentRepo) GetByID(_ context.Context, _ uint) (*model.ContentItem, error) {
+	if r.getErr != nil {
+		return nil, r.getErr
+	}
+	return r.item, nil
+}
+
 func (r *stubHandlerContentRepo) Create(_ context.Context, _ *model.ContentItem) error {
 	return nil
 }
@@ -139,6 +146,103 @@ func TestAdminUploadAudioReturnsStableResponse(t *testing.T) {
 	}
 }
 
+func TestAdminUploadVideoReturnsStableResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rootDir := t.TempDir()
+	handler := NewAdminUploadHandler(service.NewUploadService(config.UploadConfig{
+		RootDir:      rootDir,
+		ImageMaxSize: 10 * 1024 * 1024,
+		AudioMaxSize: 20 * 1024 * 1024,
+		VideoMaxSize: 500 * 1024 * 1024,
+	}))
+
+	router := gin.New()
+	router.POST("/api/admin/upload/video", handler.UploadVideo)
+
+	req := newMultipartUploadRequest(t, "http://admin.example.com/api/admin/upload/video", "file", "intro.bin", "application/octet-stream", mp4VideoFixtureForHandlerTest(), "love")
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d with body %s", recorder.Code, recorder.Body.String())
+	}
+
+	var resp struct {
+		Code int                  `json:"code"`
+		Data model.UploadResponse `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	if resp.Code != model.CodeOK {
+		t.Fatalf("expected response code 0, got %d", resp.Code)
+	}
+	if !strings.HasPrefix(resp.Data.URL, "http://admin.example.com/static/love/videos/") {
+		t.Fatalf("expected video URL prefix, got %q", resp.Data.URL)
+	}
+	if filepath.Ext(resp.Data.Filename) != ".mp4" {
+		t.Fatalf("expected stored extension .mp4, got %q", filepath.Ext(resp.Data.Filename))
+	}
+	if resp.Data.ContentType != "video/mp4" {
+		t.Fatalf("expected video/mp4 content type, got %q", resp.Data.ContentType)
+	}
+
+	savedPath := filepath.Join(rootDir, "love", "videos", resp.Data.Filename)
+	if _, err := os.Stat(savedPath); err != nil {
+		t.Fatalf("expected uploaded video file to exist at %s: %v", savedPath, err)
+	}
+}
+
+func TestAdminUploadAvatarReturnsStableResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rootDir := t.TempDir()
+	handler := NewAdminUploadHandler(service.NewUploadService(config.UploadConfig{
+		RootDir:      rootDir,
+		ImageMaxSize: 10 * 1024 * 1024,
+		AudioMaxSize: 20 * 1024 * 1024,
+		VideoMaxSize: 500 * 1024 * 1024,
+	}))
+
+	router := gin.New()
+	router.POST("/api/admin/upload/avatar", handler.UploadAvatar)
+
+	req := newMultipartUploadRequest(t, "http://admin.example.com/api/admin/upload/avatar", "file", "avatar.png", "image/png", pngFixtureForHandlerTest(), "love")
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d with body %s", recorder.Code, recorder.Body.String())
+	}
+
+	var resp struct {
+		Code int                  `json:"code"`
+		Data model.UploadResponse `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	if resp.Code != model.CodeOK {
+		t.Fatalf("expected response code 0, got %d", resp.Code)
+	}
+	if !strings.HasPrefix(resp.Data.URL, "http://admin.example.com/static/love/avatars/") {
+		t.Fatalf("expected avatar URL prefix, got %q", resp.Data.URL)
+	}
+	if filepath.Ext(resp.Data.Filename) != ".png" {
+		t.Fatalf("expected stored extension .png, got %q", filepath.Ext(resp.Data.Filename))
+	}
+
+	savedPath := filepath.Join(rootDir, "love", "avatars", resp.Data.Filename)
+	if _, err := os.Stat(savedPath); err != nil {
+		t.Fatalf("expected uploaded avatar file to exist at %s: %v", savedPath, err)
+	}
+}
+
 func TestPublicContentReturnsMusicField(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -150,6 +254,7 @@ func TestPublicContentReturnsMusicField(t *testing.T) {
 			Date:      "2026-04-07",
 			Text:      "Today is a good day.",
 			Tags:      model.JSONStringArray{"warm", "spring"},
+			ImageURLs: model.JSONStringArray{"https://love.example.com/static/love/images/1.png"},
 			BgURL:     "https://love.example.com/static/love/images/demo.png",
 			Music:     "https://love.example.com/static/love/audio/demo.mp3",
 			CreatedAt: now,
@@ -200,6 +305,9 @@ func TestPublicContentReturnsMusicField(t *testing.T) {
 	}
 	if resp.Data.Music != "https://love.example.com/static/love/audio/demo.mp3" {
 		t.Fatalf("expected music URL to be returned, got %q", resp.Data.Music)
+	}
+	if len(resp.Data.ImageURLs) != 1 || resp.Data.ImageURLs[0] != "https://love.example.com/static/love/images/1.png" {
+		t.Fatalf("expected image_urls to be returned, got %#v", resp.Data.ImageURLs)
 	}
 	if contentRepo.getScene != "love" {
 		t.Fatalf("expected content lookup scene love, got %q", contentRepo.getScene)
@@ -315,5 +423,30 @@ func wavFixtureForHandlerTest() []byte {
 		0x44, 0xac, 0x00, 0x00, 0x88, 0x58, 0x01, 0x00,
 		0x02, 0x00, 0x10, 0x00, 0x64, 0x61, 0x74, 0x61,
 		0x00, 0x08, 0x00, 0x00,
+	}
+}
+
+func pngFixtureForHandlerTest() []byte {
+	return []byte{
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+		0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+		0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44, 0x41,
+		0x54, 0x78, 0x9c, 0x63, 0x60, 0x00, 0x00, 0x00,
+		0x02, 0x00, 0x01, 0xe5, 0x27, 0xd4, 0xa2, 0x00,
+		0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+		0x42, 0x60, 0x82,
+	}
+}
+
+func mp4VideoFixtureForHandlerTest() []byte {
+	return []byte{
+		0x00, 0x00, 0x00, 0x18,
+		'f', 't', 'y', 'p',
+		'i', 's', 'o', 'm',
+		0x00, 0x00, 0x02, 0x00,
+		'i', 's', 'o', 'm',
+		'i', 's', 'o', '2',
 	}
 }

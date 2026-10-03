@@ -67,12 +67,12 @@ All APIs return the stable JSON envelope:
 - `tags` must be a string array
 - `tags_default` must be a string array in API responses
 - `date` must use `YYYY-MM-DD`
-- for admin content create, `scene_code` and `date` are required; `text`, `tags`, `bg_url`, and `music` are optional
-- for admin content update, `scene_code` and `date` stay required in the current API; `text`, `tags`, `bg_url`, and `music` are optional
+- for admin content create, `scene_code` and `date` are required; `text`, `tags`, `image_urls`, `bg_url`, and `music` are optional
+- for admin content update, `scene_code` and `date` stay required in the current API; `text`, `tags`, `image_urls`, `bg_url`, and `music` are optional
 - `scene_code` is required for scene page config create and update
 - use `tags_default`, not `tags_dafult`
-- `logo`, `banner`, `bac_img`, `default_bg_url`, and `default_music` are URL fields stored as strings
-- `logo`, `banner`, `bac_img`, `default_bg_url`, and `default_music` must not store binary image or audio data
+- `logo`, `banner`, `bac_img`, `default_bg_url`, `default_music`, `video_url`, and `avatar_url` are URL fields stored as strings
+- `logo`, `banner`, `bac_img`, `default_bg_url`, `default_music`, `video_url`, and `avatar_url` must not store binary media data
 
 ### 2.5 Suggested Error Codes
 
@@ -89,6 +89,7 @@ All APIs return the stable JSON envelope:
 | 40009 | scene domain not found | host mapping not found |
 | 40010 | duplicate scene_code | duplicate `scene_page_configs.scene_code` |
 | 40011 | scene page config not found | page config record not found |
+| 40012 | user not found | authenticated user record not found |
 | 50000 | internal server error | server error |
 
 ## 3. Data Models
@@ -102,6 +103,10 @@ All APIs return the stable JSON envelope:
   "date": "2026-04-07",
   "text": "Today is a good day.",
   "tags": ["warm", "spring", "joy"],
+  "image_urls": [
+    "https://love.example.com/static/love/images/detail-1.png",
+    "https://love.example.com/static/love/images/detail-2.png"
+  ],
   "bg_url": "https://love.example.com/static/love/images/demo.png",
   "music": "https://love.example.com/static/love/audio/demo.mp3",
   "createdAt": "2026-04-07",
@@ -116,6 +121,7 @@ All APIs return the stable JSON envelope:
 | date | string | yes | display date |
 | text | string | no | content text |
 | tags | array[string] | no | tag list |
+| image_urls | array[string] | no | extra image URL list |
 | bg_url | string | no | background image URL |
 | music | string | no | background music URL |
 | createdAt | string | no | creation date |
@@ -125,7 +131,7 @@ Constraints:
 
 - `scene_code` is required
 - `(scene_code, date)` must be unique
-- empty `text`, `tags`, `bg_url`, and `music` values are allowed
+- empty `text`, `tags`, `image_urls`, `bg_url`, and `music` values are allowed
 - existing legacy rows are backfilled to `scene_code=default`
 
 ### 3.2 SceneDomain
@@ -156,6 +162,9 @@ Rules:
   "default_music": "/static/love/audio/default_music_xxx.mp3",
   "text_default": "今天也是值得被温柔对待的一天。",
   "tags_default": ["心动", "温柔", "春天"],
+  "image_urls": ["/static/love/images/1.png", "/static/love/images/2.png"],
+  "video_url": "/static/love/videos/intro.mp4",
+  "avatar_url": "/static/love/avatars/avatar.png",
   "play_button_color": "#1a2b3c",
   "text_default_color": "#1a2b3c",
   "tags_color": "#1a2b3c",
@@ -174,6 +183,9 @@ Suggested MySQL fields:
 - `default_music VARCHAR(1024)`
 - `text_default TEXT`
 - `tags_default JSON`
+- `image_urls JSON`
+- `video_url VARCHAR(1024)`
+- `avatar_url VARCHAR(1024)`
 - `play_button_color VARCHAR(32)`
 - `text_default_color VARCHAR(32)`
 - `tags_color VARCHAR(32)`
@@ -186,11 +198,12 @@ Rules:
 
 - `scene_code` is required and unique
 - `scene_code` is the primary key
-- `logo`, `banner`, `bac_img`, `default_bg_url`, and `default_music` are URL fields stored as strings
-- the database stores URL/path strings only, never image binary data
+- `logo`, `banner`, `bac_img`, `default_bg_url`, `default_music`, `video_url`, and `avatar_url` are URL fields stored as strings
+- the database stores URL/path strings only, never image, video, or audio binary data
 - `tags_default` is stored as JSON in MySQL and returned as `array[string]`
+- `image_urls` is stored as JSON in MySQL and returned as `array[string]`
 - color fields must be valid hex color strings when non-empty
-- scene page config image/audio fields are populated through the upload APIs before being saved
+- scene page config image, video, audio, and avatar fields are populated through the upload APIs before being saved
 
 ## 4. Auth
 
@@ -201,6 +214,173 @@ Authorization: Bearer <token>
 ```
 
 Only `POST /api/admin/login` is public under `/api/admin`.
+
+### 4.1 WeChat Mini Program Login
+
+- Path: `POST /api/user/login`
+- Frontend URL: `https://dapinsport.cn/api/user/login`
+- Auth required: no
+
+Request body:
+
+```json
+{
+  "code": "code_from_wx.login"
+}
+```
+
+The backend calls the configured WeChat `jscode2session` endpoint with `appid`, `secret`, `js_code`, and `grant_type=authorization_code`, then reads `openid`. `session_key` is not returned. A user is found or created by unique `openid`; the backend generates a secure random token, saves it with `token_expire_at` and `last_login_at`, and returns the token.
+
+Success response:
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "token": "random_token",
+    "expiresIn": 2592000
+  }
+}
+```
+
+User-protected routes use:
+
+```http
+Authorization: Bearer <token>
+```
+
+The backend looks up `users.token`, checks `token_expire_at`, and provides the user ID to the handler. Missing, unknown, or expired tokens return HTTP `401` with code `40004`.
+
+### 4.2 User Profile
+
+All user profile APIs use the following frontend URL prefix:
+
+```text
+https://dapinsport.cn
+```
+
+All profile APIs require:
+
+```http
+Authorization: Bearer <token>
+```
+
+The authenticated user is identified by the token. The frontend must not send
+`user_id` to select another user.
+
+#### Get current user profile
+
+- Path: `GET /api/user/profile`
+- URL: `https://dapinsport.cn/api/user/profile`
+- Auth required: yes
+
+Success response:
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "user_id": 1,
+    "scene_code": ["curry", "love"],
+    "nickname": "小明",
+    "avatar_url": "https://dapinsport.cn/static/user/avatars/20260919010101-ab12cd34.png",
+    "birthday": "1990-01-02",
+    "gender": 1,
+    "occupation": 2
+  }
+}
+```
+
+When an optional value has not been set, `scene_code` is `[]`, text fields
+are empty strings, and `birthday`, `gender`, and `occupation` are `null`.
+
+#### Create/save or update profile fields
+
+- Path: `POST /api/user/profile`
+- URL: `https://dapinsport.cn/api/user/profile`
+- Auth required: yes
+
+- Path: `PUT /api/user/profile`
+- URL: `https://dapinsport.cn/api/user/profile`
+- Auth required: yes
+
+Both methods use partial-update semantics. Every request field is optional.
+Fields not included in the request remain unchanged.
+
+Request body:
+
+```json
+{
+  "scene_code": ["curry", "love"],
+  "nickname": "小明",
+  "avatar_url": "https://dapinsport.cn/static/user/avatars/avatar.png",
+  "birthday": "1990-01-02",
+  "gender": 1,
+  "occupation": 2
+}
+```
+
+Field rules:
+
+| field | JSON type | required | meaning |
+|---|---|---:|---|
+| `scene_code` | array[string] | no | user scene code list; each value must match the scene code format |
+| `nickname` | string | no | nickname, up to 128 characters |
+| `avatar_url` | string | no | URL returned by the avatar upload API, or another valid HTTP(S)/static URL |
+| `birthday` | string | no | date in `YYYY-MM-DD` format |
+| `gender` | integer | no | business-defined gender code |
+| `occupation` | integer | no | business-defined occupation code |
+
+To clear a field, send `null` where supported, an empty string for text/date
+fields, or an empty array for `scene_code`.
+
+#### Clear profile fields
+
+- Path: `DELETE /api/user/profile`
+- URL: `https://dapinsport.cn/api/user/profile`
+- Auth required: yes
+
+This clears the six profile fields but does not delete the `users` row,
+`openid`, `user_id`, or the current login account. The response is the cleared
+profile.
+
+### 4.3 User Avatar Upload
+
+- Path: `POST /api/user/upload/avatar`
+- URL: `https://dapinsport.cn/api/user/upload/avatar`
+- Auth required: yes
+- Content-Type: `multipart/form-data`
+- File field: `file`
+
+Example:
+
+```bash
+curl -X POST 'https://dapinsport.cn/api/user/upload/avatar' \
+  -H 'Authorization: Bearer <token>' \
+  -F 'file=@avatar.png'
+```
+
+Success response:
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "url": "https://dapinsport.cn/static/user/avatars/20260919010101-ab12cd34.png",
+    "filename": "20260919010101-ab12cd34.png",
+    "size": 12345,
+    "contentType": "image/png"
+  }
+}
+```
+
+The upload API only generates and returns the avatar URL. The frontend should
+then send that URL as `avatar_url` to `POST` or `PUT /api/user/profile`.
+Supported image formats follow the existing image upload rules: JPG, JPEG,
+PNG, and WebP.
 
 ## 5. Public APIs
 
@@ -243,6 +423,10 @@ Success example:
     "date": "2026-04-07",
     "text": "Today is a good day.",
     "tags": ["warm", "spring", "joy"],
+    "image_urls": [
+      "https://love.example.com/static/love/images/detail-1.png",
+      "https://love.example.com/static/love/images/detail-2.png"
+    ],
     "bg_url": "https://love.example.com/static/love/images/demo.png",
     "music": "https://love.example.com/static/love/audio/demo.mp3",
     "createdAt": "2026-04-07",
@@ -291,14 +475,21 @@ Success example:
 - Path: `GET /api/public/scene-page-config`
 - Purpose: resolve `scene_code` from `Host` and return the scene page config
 
+Query parameters:
+
+| name | type | required | meaning |
+|---|---|---:|---|
+| scene | string | no | debug override only when backend config enables it |
+
 Behavior:
 
 1. read `Host` from the request
-2. resolve `scene_code` through `scene_domains`
-3. query `scene_page_configs` by `scene_code`
-4. return the current scene page config
-5. if no scene mapping exists, return a clear JSON error
-6. if scene mapping exists but no page config exists, return a clear JSON not-found error
+2. if `ENABLE_PUBLIC_SCENE_OVERRIDE=true` and `scene` is present, use that `scene_code`
+3. otherwise resolve `scene_code` through `scene_domains`
+4. query `scene_page_configs` by `scene_code`
+5. return the current scene page config
+6. if no scene mapping exists, return a clear JSON error
+7. if scene mapping exists but no page config exists, return a clear JSON not-found error
 
 Success example:
 
@@ -357,6 +548,59 @@ Rendering rules:
 10. tags background color comes from `scene_page_configs.tags_bac_color`
 11. date color comes from `scene_page_configs.date_color`
 
+### 5.5 Explicit Scene Query APIs
+
+These APIs are separate from `/api/public/*`.
+
+- frontend URL prefix: `https://dapinsport.cn`
+- authentication: not required
+- `scene_code` is supplied explicitly by the client
+- these APIs do not read `Host`, query `scene_domains`, or perform Host to
+  `scene_code` resolution
+
+#### Get Scene Page Config By Scene Code
+
+- Path: `GET /api/query/scene-page-config`
+- URL: `https://dapinsport.cn/api/query/scene-page-config`
+
+Query parameters:
+
+| name | type | required | meaning |
+|---|---|---:|---|
+| scene_code | string | yes | scene identifier |
+
+Example:
+
+```http
+GET https://dapinsport.cn/api/query/scene-page-config?scene_code=curry
+```
+
+The backend queries `scene_page_configs` by `scene_code`.
+
+#### Get Content By Scene Code And Date
+
+- Path: `GET /api/query/content`
+- URL: `https://dapinsport.cn/api/query/content`
+
+Query parameters:
+
+| name | type | required | meaning |
+|---|---|---:|---|
+| scene_code | string | yes | scene identifier |
+| date | string | yes | content date in `YYYY-MM-DD` |
+
+Example:
+
+```http
+GET https://dapinsport.cn/api/query/content?scene_code=curry&date=2026-09-19
+```
+
+The backend queries `content_items` by the exact `(scene_code, date)` pair.
+
+Both endpoints use the standard response envelope. Invalid parameters return
+HTTP `400`; a missing scene page config returns HTTP `404` with code `40011`;
+a missing content record returns HTTP `404` with code `40003`.
+
 ## 6. Admin APIs
 
 ### 6.1 Admin Login
@@ -398,6 +642,7 @@ Field requirements:
 | date | yes | must use `YYYY-MM-DD` |
 | text | no | empty or missing value falls back on H5 |
 | tags | no | if provided, must be an array of strings; `[]` is allowed |
+| image_urls | no | if provided, must be an array of strings; `[]` is allowed |
 | bg_url | no | empty string is allowed |
 | music | no | empty string is allowed |
 
@@ -425,7 +670,7 @@ Partial create example:
 - Path: `PUT /api/admin/content/:id`
 - Auth required: yes
 
-Request body is the same as create. In the current API, `scene_code` and `date` are still required for update, while `text`, `tags`, `bg_url`, and `music` stay optional.
+Request body is the same as create. In the current API, `scene_code` and `date` are still required for update, while `text`, `tags`, `image_urls`, `bg_url`, and `music` stay optional.
 
 Empty optional fields on create or update use the public H5 fallback order from `scene_page_configs` values before the existing hardcoded H5 fallback.
 
@@ -535,6 +780,10 @@ Success response example:
         "default_music": "/static/love/audio/default_music_xxx.mp3",
         "text_default": "今天也是值得被温柔对待的一天。",
         "tags_default": ["心动", "温柔", "春天"],
+        "image_urls": [
+          "/static/love/images/1.png",
+          "/static/love/images/2.png"
+        ],
         "play_button_color": "#1a2b3c",
         "text_default_color": "#1a2b3c",
         "tags_color": "#1a2b3c",
@@ -571,6 +820,7 @@ Request body:
   "default_music": "/static/love/audio/default_music_xxx.mp3",
   "text_default": "今天也是值得被温柔对待的一天。",
   "tags_default": ["心动", "温柔", "春天"],
+  "image_urls": ["/static/love/images/1.png", "/static/love/images/2.png"],
   "play_button_color": "#1a2b3c",
   "text_default_color": "#1a2b3c",
   "tags_color": "#1a2b3c",
@@ -583,6 +833,7 @@ Validation:
 
 - `scene_code` is required
 - `tags_default` must be a string array
+- `image_urls` must be a string array
 - color fields must be valid hex colors when non-empty
 - `logo`, `banner`, `bac_img`, `default_bg_url`, and `default_music` must be URL strings or static paths
 - create rejects duplicate `scene_code`
@@ -603,6 +854,8 @@ Notes:
 - update returns a clear not-found error if the record does not exist
 - `default_bg_url` should be populated through `POST /api/admin/upload/image`
 - `default_music` should be populated through `POST /api/admin/upload/audio`
+- `video_url` should be populated through `POST /api/admin/upload/video`
+- `avatar_url` should be populated through `POST /api/admin/upload/avatar`
 
 ### 6.15 Delete Scene Page Config
 
@@ -680,6 +933,68 @@ The returned `data.url` value is what admin should save into:
 - `scene_page_configs.default_music`
 - `content_items.music`
 
+### 6.18 Upload Video
+
+- Path: `POST /api/admin/upload/video`
+- Auth required: yes
+- Content-Type: `multipart/form-data`
+
+Form fields:
+
+| name | type | required | meaning |
+|---|---|---:|---|
+| file | file | yes | video file |
+| scene_code | string | no | upload scene, defaults to `default` |
+
+Supported video containers are MP4, WebM, and QuickTime/MOV.
+
+Example:
+
+```bash
+curl -X POST 'https://admin.example.com/api/admin/upload/video' \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -F 'scene_code=love' \
+  -F 'file=@/absolute/path/to/intro.mp4'
+```
+
+The returned `data.url` value should be saved into `scene_page_configs.video_url`.
+
+Storage layout:
+
+- dev: `./uploads/dev/<scene_code>/videos/`
+- test: `/opt/rainbow-backend/uploads/test/<scene_code>/videos/`
+- prod: `/opt/rainbow-backend/uploads/prod/<scene_code>/videos/`
+
+### 6.19 Upload Scene Avatar
+
+- Path: `POST /api/admin/upload/avatar`
+- Auth required: yes
+- Content-Type: `multipart/form-data`
+
+Form fields:
+
+| name | type | required | meaning |
+|---|---|---:|---|
+| file | file | yes | avatar image |
+| scene_code | string | no | upload scene, defaults to `default` |
+
+Example:
+
+```bash
+curl -X POST 'https://admin.example.com/api/admin/upload/avatar' \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -F 'scene_code=love' \
+  -F 'file=@/absolute/path/to/avatar.png'
+```
+
+The returned `data.url` value should be saved into `scene_page_configs.avatar_url`.
+
+Storage layout:
+
+- dev: `./uploads/dev/<scene_code>/avatars/`
+- test: `/opt/rainbow-backend/uploads/test/<scene_code>/avatars/`
+- prod: `/opt/rainbow-backend/uploads/prod/<scene_code>/avatars/`
+
 ## 7. Frontend Integration Notes
 
 ### 7.1 H5 Frontend
@@ -709,10 +1024,14 @@ The admin frontend should:
 - upload `logo`, `banner`, and `bac_img` through `POST /api/admin/upload/image`
 - upload `default_bg_url` through `POST /api/admin/upload/image`
 - upload `default_music` through `POST /api/admin/upload/audio`
+- upload `video_url` through `POST /api/admin/upload/video`
+- upload `avatar_url` through `POST /api/admin/upload/avatar`
 - read returned `data.url` and save that string into the form
 - allow manual editing of the URL if needed
 - show image preview for `default_bg_url` when practical
 - provide audio preview/playback for `default_music` when practical
+- provide video preview for `video_url` when practical
+- show avatar preview for `avatar_url` when practical
 - edit `tags_default` as an array of strings
 - use color inputs or text inputs for hex color strings
 
@@ -724,9 +1043,11 @@ The admin frontend should:
 4. Upload a background image through `POST /api/admin/upload/image` with `scene_code=love`.
 5. Upload a default background image through `POST /api/admin/upload/image` with `scene_code=love`.
 6. Upload a default music file through `POST /api/admin/upload/audio` with `scene_code=love`.
-7. Create `scene_page_configs` for `scene_code=love` using the returned upload URLs.
-8. Create content for `scene_code=love`, `date=2026-04-07`.
-9. Request public scene page config with `Host: love.dapinsport.cn`.
-10. Request public content with `Host: love.dapinsport.cn`.
-11. Verify H5 fallback rules for logo, banner, background, music, text, tags, and colors.
-12. Verify admin CRUD for scene page configs.
+7. Upload a scene video through `POST /api/admin/upload/video` with `scene_code=love`.
+8. Upload a scene avatar through `POST /api/admin/upload/avatar` with `scene_code=love`.
+9. Create `scene_page_configs` for `scene_code=love` using the returned upload URLs.
+10. Create content for `scene_code=love`, `date=2026-04-07`.
+11. Request public scene page config with `Host: love.dapinsport.cn`.
+12. Request public content with `Host: love.dapinsport.cn`.
+13. Verify H5 renders the configured video and avatar alongside the existing page defaults.
+14. Verify admin CRUD for scene page configs.

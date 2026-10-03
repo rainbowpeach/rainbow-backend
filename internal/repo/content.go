@@ -9,6 +9,7 @@ import (
 )
 
 type ContentRepository interface {
+	GetByID(ctx context.Context, id uint) (*model.ContentItem, error)
 	GetBySceneAndDate(ctx context.Context, sceneCode, date string) (*model.ContentItem, error)
 	Create(ctx context.Context, item *model.ContentItem) error
 	UpdateByID(ctx context.Context, id uint, item *model.ContentItem) error
@@ -35,6 +36,15 @@ func (r *GormContentRepository) GetBySceneAndDate(ctx context.Context, sceneCode
 	return &item, nil
 }
 
+func (r *GormContentRepository) GetByID(ctx context.Context, id uint) (*model.ContentItem, error) {
+	var item model.ContentItem
+	if err := r.db.WithContext(ctx).First(&item, id).Error; err != nil {
+		return nil, err
+	}
+
+	return &item, nil
+}
+
 func (r *GormContentRepository) Create(ctx context.Context, item *model.ContentItem) error {
 	return r.db.WithContext(ctx).Create(item).Error
 }
@@ -48,6 +58,7 @@ func (r *GormContentRepository) UpdateByID(ctx context.Context, id uint, item *m
 			"scene_code": item.SceneCode,
 			"text":       item.Text,
 			"tags":       item.Tags,
+			"image_urls": item.ImageURLs,
 			"bg_url":     item.BgURL,
 			"music":      item.Music,
 		})

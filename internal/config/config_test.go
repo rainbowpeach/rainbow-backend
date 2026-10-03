@@ -22,6 +22,13 @@ func TestValidateRejectsInsecureProductionSecrets(t *testing.T) {
 			RootDir:      "./uploads/dev",
 			ImageMaxSize: 10 * 1024 * 1024,
 			AudioMaxSize: 20 * 1024 * 1024,
+			VideoMaxSize: 500 * 1024 * 1024,
+		},
+		WeChat: WeChatMiniProgramConfig{
+			AppID:              "wx_test_app_id",
+			AppSecret:          "test_app_secret",
+			JSCode2SessionURL:  "https://api.weixin.qq.com/sns/jscode2session",
+			UserTokenExpiresIn: 30 * 24 * 60 * 60,
 		},
 	}
 
@@ -50,6 +57,13 @@ func TestValidateAllowsLocalExampleSecrets(t *testing.T) {
 			RootDir:      "./uploads/dev",
 			ImageMaxSize: 10 * 1024 * 1024,
 			AudioMaxSize: 20 * 1024 * 1024,
+			VideoMaxSize: 500 * 1024 * 1024,
+		},
+		WeChat: WeChatMiniProgramConfig{
+			AppID:              "wx_test_app_id",
+			AppSecret:          "test_app_secret",
+			JSCode2SessionURL:  "https://api.weixin.qq.com/sns/jscode2session",
+			UserTokenExpiresIn: 30 * 24 * 60 * 60,
 		},
 	}
 
@@ -120,6 +134,13 @@ func TestValidateRejectsInvalidUploadConfig(t *testing.T) {
 			RootDir:      "",
 			ImageMaxSize: 0,
 			AudioMaxSize: 0,
+			VideoMaxSize: 0,
+		},
+		WeChat: WeChatMiniProgramConfig{
+			AppID:              "wx_test_app_id",
+			AppSecret:          "test_app_secret",
+			JSCode2SessionURL:  "https://api.weixin.qq.com/sns/jscode2session",
+			UserTokenExpiresIn: 30 * 24 * 60 * 60,
 		},
 	}
 

@@ -27,25 +27,50 @@ func New(cfg config.Config, db *gorm.DB) *gin.Engine {
 	contentRepo := repo.NewContentRepository(db)
 	sceneDomainRepo := repo.NewSceneDomainRepository(db)
 	scenePageConfigRepo := repo.NewScenePageConfigRepository(db)
+	userRepo := repo.NewUserRepository(db)
 	tokenManager := service.NewTokenManager(cfg.JWTSecret, cfg.JWTExpiresIn)
 	authService := service.NewAuthService(adminRepo, tokenManager)
+	miniProgramAuthService := service.NewMiniProgramAuthService(
+		userRepo,
+		service.NewWeChatCode2SessionAPIClient(cfg.WeChat, &http.Client{Timeout: 5 * time.Second}),
+		cfg.WeChat.UserTokenExpiresIn,
+	)
 	contentService := service.NewContentService(contentRepo)
 	sceneDomainService := service.NewSceneDomainService(sceneDomainRepo)
 	scenePageConfigService := service.NewScenePageConfigService(scenePageConfigRepo)
 	sceneResolver := service.NewSceneResolver(sceneDomainRepo)
 	uploadService := service.NewUploadService(cfg.Upload)
+	userProfileService := service.NewUserProfileService(userRepo)
 	adminAuthHandler := handler.NewAdminAuthHandler(authService)
+	miniProgramAuthHandler := handler.NewMiniProgramAuthHandler(miniProgramAuthService)
+	userHandler := handler.NewUserHandler(userProfileService, uploadService)
 	adminContentHandler := handler.NewAdminContentHandler(contentService)
 	adminUploadHandler := handler.NewAdminUploadHandler(uploadService)
 	adminSceneDomainHandler := handler.NewAdminSceneDomainHandler(sceneDomainService)
 	adminScenePageConfigHandler := handler.NewAdminScenePageConfigHandler(scenePageConfigService)
 	publicContentHandler := handler.NewPublicContentHandler(contentService, scenePageConfigService, sceneResolver, cfg.Scene)
+	queryHandler := handler.NewQueryHandler(contentService, scenePageConfigService)
 	engine.GET("/health", healthHandler(cfg, db))
+
+	user := engine.Group("/api/user")
+	user.POST("/login", miniProgramAuthHandler.Login)
+
+	userProtected := user.Group("")
+	userProtected.Use(middleware.UserTokenAuth(userRepo))
+	userProtected.GET("/profile", userHandler.GetProfile)
+	userProtected.POST("/profile", userHandler.SaveProfile)
+	userProtected.PUT("/profile", userHandler.SaveProfile)
+	userProtected.DELETE("/profile", userHandler.DeleteProfile)
+	userProtected.POST("/upload/avatar", userHandler.UploadAvatar)
 
 	public := engine.Group("/api/public")
 	public.GET("/content", publicContentHandler.GetByDate)
 	public.GET("/scene-domain-mapping", publicContentHandler.GetSceneDomainMapping)
 	public.GET("/scene-page-config", publicContentHandler.GetScenePageConfig)
+
+	query := engine.Group("/api/query")
+	query.GET("/content", queryHandler.GetContent)
+	query.GET("/scene-page-config", queryHandler.GetScenePageConfig)
 
 	admin := engine.Group("/api/admin")
 	admin.POST("/login", adminAuthHandler.Login)
@@ -68,6 +93,8 @@ func New(cfg config.Config, db *gorm.DB) *gin.Engine {
 	adminProtected.DELETE("/scene-page-configs/:scene_code", adminScenePageConfigHandler.Delete)
 	adminProtected.POST("/upload/image", adminUploadHandler.UploadImage)
 	adminProtected.POST("/upload/audio", adminUploadHandler.UploadAudio)
+	adminProtected.POST("/upload/video", adminUploadHandler.UploadVideo)
+	adminProtected.POST("/upload/avatar", adminUploadHandler.UploadAvatar)
 
 	return engine
 }

@@ -176,6 +176,9 @@ func buildScenePageConfigModel(req *model.ScenePageConfigUpsertRequest) (*model.
 	if len(req.TagsDefault) == 0 {
 		req.TagsDefault = []string{}
 	}
+	if len(req.ImageURLs) == 0 {
+		req.ImageURLs = []string{}
+	}
 
 	normalizedLogo, err := model.ValidateOptionalAssetURL(req.Logo)
 	if err != nil {
@@ -194,6 +197,14 @@ func buildScenePageConfigModel(req *model.ScenePageConfigUpsertRequest) (*model.
 		return nil, ErrInvalidScenePageConfigParams
 	}
 	normalizedDefaultMusic, err := model.ValidateOptionalAssetURL(req.DefaultMusic)
+	if err != nil {
+		return nil, ErrInvalidScenePageConfigParams
+	}
+	normalizedVideoURL, err := model.ValidateOptionalAssetURL(req.VideoURL)
+	if err != nil {
+		return nil, ErrInvalidScenePageConfigParams
+	}
+	normalizedAvatarURL, err := model.ValidateOptionalAssetURL(req.AvatarURL)
 	if err != nil {
 		return nil, ErrInvalidScenePageConfigParams
 	}
@@ -224,6 +235,16 @@ func buildScenePageConfigModel(req *model.ScenePageConfigUpsertRequest) (*model.
 			return nil, ErrInvalidScenePageConfigParams
 		}
 	}
+	for i, imageURL := range req.ImageURLs {
+		normalizedImageURL, err := model.ValidateOptionalAssetURL(imageURL)
+		if err != nil {
+			return nil, ErrInvalidScenePageConfigParams
+		}
+		if normalizedImageURL == "" {
+			return nil, ErrInvalidScenePageConfigParams
+		}
+		req.ImageURLs[i] = normalizedImageURL
+	}
 
 	req.SceneCode = sceneCode
 	req.Logo = normalizedLogo
@@ -231,6 +252,8 @@ func buildScenePageConfigModel(req *model.ScenePageConfigUpsertRequest) (*model.
 	req.BacImg = normalizedBacImg
 	req.DefaultBgURL = normalizedDefaultBgURL
 	req.DefaultMusic = normalizedDefaultMusic
+	req.VideoURL = normalizedVideoURL
+	req.AvatarURL = normalizedAvatarURL
 	req.PlayButtonColor = playButtonColor
 	req.TextDefaultColor = textDefaultColor
 	req.TagsColor = tagsColor
@@ -246,6 +269,9 @@ func buildScenePageConfigModel(req *model.ScenePageConfigUpsertRequest) (*model.
 		DefaultMusic:     normalizedDefaultMusic,
 		TextDefault:      strings.TrimSpace(req.TextDefault),
 		TagsDefault:      model.JSONStringArray(req.TagsDefault),
+		ImageURLs:        model.JSONStringArray(req.ImageURLs),
+		VideoURL:         normalizedVideoURL,
+		AvatarURL:        normalizedAvatarURL,
 		PlayButtonColor:  playButtonColor,
 		TextDefaultColor: textDefaultColor,
 		TagsColor:        tagsColor,

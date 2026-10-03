@@ -20,12 +20,18 @@ func Logger() gin.HandlerFunc {
 			errorMessage = " | " + strings.TrimSpace(params.ErrorMessage)
 		}
 
+		host := ""
+		if params.Request != nil {
+			host = params.Request.Host
+		}
+
 		return fmt.Sprintf(
-			"%s | %3d | %13v | %15s | %-7s %s%s\n",
+			"%s | %3d | %13v | %15s | host=%q | %-7s %s%s\n",
 			params.TimeStamp.Format(time.RFC3339),
 			params.StatusCode,
 			params.Latency,
 			params.ClientIP,
+			host,
 			params.Method,
 			path,
 			errorMessage,
