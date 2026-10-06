@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -26,6 +28,7 @@ type Config struct {
 	Upload        UploadConfig
 	Scene         SceneConfig
 	WeChat        WeChatMiniProgramConfig
+	Ark           ArkConfig
 }
 
 type DatabaseConfig struct {
@@ -53,6 +56,17 @@ type WeChatMiniProgramConfig struct {
 	AppSecret          string
 	JSCode2SessionURL  string
 	UserTokenExpiresIn int64
+}
+
+type ArkConfig struct {
+	BaseURL string
+	APIKey  string
+	Model   string
+	Timeout time.Duration
+}
+
+func (c ArkConfig) Enabled() bool {
+	return strings.TrimSpace(c.APIKey) != "" && strings.TrimSpace(c.Model) != "" && strings.TrimSpace(c.BaseURL) != ""
 }
 
 func Load() (Config, error) {
@@ -90,6 +104,12 @@ func Load() (Config, error) {
 			AppSecret:          getEnv("WECHAT_MINIPROGRAM_APP_SECRET", ""),
 			JSCode2SessionURL:  getEnv("WECHAT_JSCODE2SESSION_URL", "https://api.weixin.qq.com/sns/jscode2session"),
 			UserTokenExpiresIn: getEnvInt64("WECHAT_USER_TOKEN_EXPIRES_IN", 30*24*60*60),
+		},
+		Ark: ArkConfig{
+			BaseURL: getEnv("ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"),
+			APIKey:  getEnv("ARK_API_KEY", ""),
+			Model:   getEnv("ARK_MODEL", ""),
+			Timeout: time.Duration(getEnvInt64("ARK_TIMEOUT_SECONDS", 60)) * time.Second,
 		},
 	}
 
@@ -151,6 +171,12 @@ func (c Config) Validate() error {
 	}
 	if c.WeChat.UserTokenExpiresIn <= 0 {
 		return errors.New("WECHAT_USER_TOKEN_EXPIRES_IN must be greater than 0")
+	}
+	if strings.TrimSpace(c.Ark.BaseURL) != "" {
+		parsed, err := url.Parse(strings.TrimSpace(c.Ark.BaseURL))
+		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
+			return errors.New("ARK_BASE_URL must be an http or https URL")
+		}
 	}
 	if c.isProduction() {
 		if isInsecureSecret(c.JWTSecret) {

@@ -41,6 +41,10 @@ func New(cfg config.Config, db *gorm.DB) *gin.Engine {
 	sceneResolver := service.NewSceneResolver(sceneDomainRepo)
 	uploadService := service.NewUploadService(cfg.Upload)
 	userProfileService := service.NewUserProfileService(userRepo)
+	chatPersonaRepo := repo.NewChatPersonaRepository(db)
+	chatLogRepo := repo.NewChatLogRepository(db)
+	arkClient := service.NewArkChatClient(cfg.Ark, &http.Client{Timeout: cfg.Ark.Timeout})
+	chatService := service.NewChatService(chatPersonaRepo, chatLogRepo, userRepo, arkClient, cfg.Ark.Timeout)
 	adminAuthHandler := handler.NewAdminAuthHandler(authService)
 	miniProgramAuthHandler := handler.NewMiniProgramAuthHandler(miniProgramAuthService)
 	userHandler := handler.NewUserHandler(userProfileService, uploadService)
@@ -50,6 +54,7 @@ func New(cfg config.Config, db *gorm.DB) *gin.Engine {
 	adminScenePageConfigHandler := handler.NewAdminScenePageConfigHandler(scenePageConfigService)
 	publicContentHandler := handler.NewPublicContentHandler(contentService, scenePageConfigService, sceneResolver, cfg.Scene)
 	queryHandler := handler.NewQueryHandler(contentService, scenePageConfigService)
+	chatHandler := handler.NewChatHandler(chatService)
 	engine.GET("/health", healthHandler(cfg, db))
 
 	user := engine.Group("/api/user")
@@ -62,6 +67,7 @@ func New(cfg config.Config, db *gorm.DB) *gin.Engine {
 	userProtected.PUT("/profile", userHandler.SaveProfile)
 	userProtected.DELETE("/profile", userHandler.DeleteProfile)
 	userProtected.POST("/upload/avatar", userHandler.UploadAvatar)
+	userProtected.POST("/chat", chatHandler.Chat)
 
 	public := engine.Group("/api/public")
 	public.GET("/content", publicContentHandler.GetByDate)
@@ -95,6 +101,7 @@ func New(cfg config.Config, db *gorm.DB) *gin.Engine {
 	adminProtected.POST("/upload/audio", adminUploadHandler.UploadAudio)
 	adminProtected.POST("/upload/video", adminUploadHandler.UploadVideo)
 	adminProtected.POST("/upload/avatar", adminUploadHandler.UploadAvatar)
+	adminProtected.GET("/chat-logs", chatHandler.ListLogs)
 
 	return engine
 }

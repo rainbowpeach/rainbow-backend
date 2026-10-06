@@ -155,6 +155,10 @@ Important variables:
 - `WECHAT_MINIPROGRAM_APP_SECRET`: WeChat Mini Program AppSecret
 - `WECHAT_JSCODE2SESSION_URL`: WeChat `jscode2session` endpoint, defaulting to the official endpoint
 - `WECHAT_USER_TOKEN_EXPIRES_IN`: Mini Program user token lifetime in seconds, default `2592000` (30 days)
+- `ARK_BASE_URL`: Volcengine Ark chat completions base URL, default `https://ark.cn-beijing.volces.com/api/v3`
+- `ARK_API_KEY`: Volcengine Ark API key. Chat stays unavailable until this and `ARK_MODEL` are set. Other APIs keep working.
+- `ARK_MODEL`: Ark endpoint ID, usually starting with `ep-`
+- `ARK_TIMEOUT_SECONDS`: upstream chat timeout in seconds, default `60`
 
 Default upload roots:
 

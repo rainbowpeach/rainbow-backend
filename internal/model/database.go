@@ -43,6 +43,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&SceneDomain{},
 		&ContentItem{},
 		&ScenePageConfig{},
+		&ChatPersona{},
+		&ChatLog{},
 	); err != nil {
 		return err
 	}

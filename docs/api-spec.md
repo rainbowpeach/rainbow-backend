@@ -91,6 +91,8 @@ All APIs return the stable JSON envelope:
 | 40010 | duplicate scene_code | duplicate `scene_page_configs.scene_code` |
 | 40011 | scene page config not found | page config record not found |
 | 40012 | user not found | authenticated user record not found |
+| 40013 | chat unavailable | chat model is not configured or the upstream call failed |
+| 40014 | too many requests | the user sent too many chat requests |
 | 50000 | internal server error | server error |
 
 ## 3. Data Models
@@ -382,6 +384,42 @@ The upload API only generates and returns the avatar URL. The frontend should
 then send that URL as `avatar_url` to `POST` or `PUT /api/user/profile`.
 Supported image formats follow the existing image upload rules: JPG, JPEG,
 PNG, and WebP.
+
+### 4.6 Mini Program Chat
+
+- Path: `POST /api/user/chat`
+- Auth required: yes, Mini Program user token
+- The server selects the persona prompt from `chat_personas` by `scene_code`. Clients cannot supply a system prompt.
+- Recent `user` and `assistant` turns are accepted, at most 10. The last turn must be `user`.
+- The current user question and the assistant reply are stored in `chat_logs`. Failed upstream calls still store the question.
+- Each user is limited to 20 chat requests per minute.
+- Gender and occupation on the user record are appended to the prompt. `0` 保密, `1` 男 / 大学生, `2` 女 / 初中生, `3` 高中生, `4` 社会牛马.
+
+Request:
+
+```json
+{
+  "scene_code": "kobe-live",
+  "mode": "chat",
+  "messages": [
+    { "role": "user", "content": "今天有点累" }
+  ]
+}
+```
+
+`mode` is `chat`, `praise`, `energy`, or `learn`. Unknown modes fall back to that persona's `chat` prompt.
+
+Success response:
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "reply": "累就歇一口，歇完继续。"
+  }
+}
+```
 
 ## 5. Public APIs
 
@@ -995,6 +1033,23 @@ Storage layout:
 - dev: `./uploads/dev/<scene_code>/avatars/`
 - test: `/opt/rainbow-backend/uploads/test/<scene_code>/avatars/`
 - prod: `/opt/rainbow-backend/uploads/prod/<scene_code>/avatars/`
+
+### 6.20 List Chat Logs
+
+- Path: `GET /api/admin/chat-logs`
+- Auth required: yes
+
+Query parameters:
+
+| name | type | required | meaning |
+|---|---|---:|---|
+| scene_code | string | no | persona scene code |
+| user_id | number | no | Mini Program user ID |
+| keyword | string | no | match against the user question |
+| page | number | no | page number, default `1` |
+| pageSize | number | no | page size, default `20`, maximum `100` |
+
+Success `data` contains `list`, `total`, `page`, and `pageSize`. Each list item includes `id`, `user_id`, `scene_code`, `mode`, `user_text`, `assistant_text`, `status`, and `createdAt`. `status` is `ok` or `failed`.
 
 ## 7. Frontend Integration Notes
 
