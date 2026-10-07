@@ -45,6 +45,10 @@ func main() {
 		log.Fatalf("seed admin: %v", err)
 	}
 
+	if err := model.SeedChatPersonas(db); err != nil {
+		log.Fatalf("seed chat personas: %v", err)
+	}
+
 	engine := router.New(cfg, db)
 	server := &http.Server{
 		Addr:              cfg.Address(),

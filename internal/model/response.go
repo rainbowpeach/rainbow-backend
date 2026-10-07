@@ -25,6 +25,8 @@ const (
 	CodeDuplicateScenePageConfig = 40010
 	CodeScenePageConfigNotFound  = 40011
 	CodeUserNotFound             = 40012
+	CodeChatUnavailable          = 40013
+	CodeChatRateLimited          = 40014
 	CodeInternalServerError      = 50000
 )
 
