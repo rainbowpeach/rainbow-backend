@@ -61,6 +61,33 @@ func (h *ChatHandler) ListLogs(c *gin.Context) {
 	model.WriteOK(c, result)
 }
 
+func (h *ChatHandler) ListPersonas(c *gin.Context) {
+	result, err := h.chat.ListPersonas(c.Request.Context())
+	if err != nil {
+		log.Printf("admin chat persona list failed %s ip=%s err=%v", adminActor(c), c.ClientIP(), err)
+		h.respondChatError(c, err)
+		return
+	}
+	model.WriteOK(c, result)
+}
+
+func (h *ChatHandler) UpdatePersona(c *gin.Context) {
+	var req model.ChatPersonaUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("admin chat persona update invalid request %s ip=%s err=%v", adminActor(c), c.ClientIP(), err)
+		model.WriteError(c, http.StatusBadRequest, model.CodeInvalidParams, "invalid params")
+		return
+	}
+
+	result, err := h.chat.UpdatePersona(c.Request.Context(), c.Param("scene_code"), &req)
+	if err != nil {
+		log.Printf("admin chat persona update failed %s ip=%s scene=%s err=%v", adminActor(c), c.ClientIP(), c.Param("scene_code"), err)
+		h.respondChatError(c, err)
+		return
+	}
+	model.WriteOK(c, result)
+}
+
 func (h *ChatHandler) respondChatError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrInvalidChat), errors.Is(err, service.ErrChatPersona):

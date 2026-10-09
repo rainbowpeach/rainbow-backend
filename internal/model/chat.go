@@ -75,3 +75,31 @@ type ChatLogListResponse struct {
 	Page     int        `json:"page"`
 	PageSize int        `json:"pageSize"`
 }
+
+type ChatPersonaAdminResponse struct {
+	SceneCode   string    `json:"scene_code"`
+	BasePrompt  string    `json:"base_prompt"`
+	ModePrompts JSONMap   `json:"mode_prompts"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+type ChatPersonaUpdateRequest struct {
+	BasePrompt  string  `json:"base_prompt"`
+	ModePrompts JSONMap `json:"mode_prompts"`
+}
+
+func NewChatPersonaAdminResponse(persona *ChatPersona) *ChatPersonaAdminResponse {
+	if persona == nil {
+		return nil
+	}
+	prompts := JSONMap{}
+	for key, value := range persona.ModePrompts {
+		prompts[key] = value
+	}
+	return &ChatPersonaAdminResponse{
+		SceneCode:   persona.SceneCode,
+		BasePrompt:  persona.BasePrompt,
+		ModePrompts: prompts,
+		UpdatedAt:   persona.UpdatedAt,
+	}
+}

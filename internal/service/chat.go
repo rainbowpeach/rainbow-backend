@@ -179,6 +179,78 @@ func (s *ChatService) ListLogs(ctx context.Context, req model.ChatLogListRequest
 	}, nil
 }
 
+func (s *ChatService) ListPersonas(ctx context.Context) ([]*model.ChatPersonaAdminResponse, error) {
+	items, err := s.personas.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list chat personas: %w", err)
+	}
+	list := make([]*model.ChatPersonaAdminResponse, 0, len(items))
+	for i := range items {
+		list = append(list, model.NewChatPersonaAdminResponse(&items[i]))
+	}
+	return list, nil
+}
+
+func (s *ChatService) UpdatePersona(ctx context.Context, sceneCode string, req *model.ChatPersonaUpdateRequest) (*model.ChatPersonaAdminResponse, error) {
+	code, err := canonicalSceneCode(sceneCode)
+	if err != nil {
+		return nil, ErrInvalidChat
+	}
+	basePrompt, modeUpdates, err := normalizePersonaUpdate(req)
+	if err != nil {
+		return nil, err
+	}
+
+	persona, err := s.personas.GetBySceneCode(ctx, code)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrChatPersona
+		}
+		return nil, fmt.Errorf("get chat persona: %w", err)
+	}
+
+	merged := model.JSONMap{}
+	for key, value := range persona.ModePrompts {
+		merged[key] = value
+	}
+	for key, value := range modeUpdates {
+		merged[key] = value
+	}
+	if err := s.personas.UpdatePrompts(ctx, code, basePrompt, merged); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrChatPersona
+		}
+		return nil, fmt.Errorf("update chat persona: %w", err)
+	}
+
+	persona.BasePrompt = basePrompt
+	persona.ModePrompts = merged
+	return model.NewChatPersonaAdminResponse(persona), nil
+}
+
+func normalizePersonaUpdate(req *model.ChatPersonaUpdateRequest) (string, model.JSONMap, error) {
+	if req == nil {
+		return "", nil, ErrInvalidChat
+	}
+	basePrompt := strings.TrimSpace(req.BasePrompt)
+	if basePrompt == "" || utf8.RuneCountInString(basePrompt) > 20000 {
+		return "", nil, ErrInvalidChat
+	}
+	updates := model.JSONMap{}
+	for key, value := range req.ModePrompts {
+		name := strings.TrimSpace(key)
+		if name == "" || utf8.RuneCountInString(name) > 32 {
+			return "", nil, ErrInvalidChat
+		}
+		text := strings.TrimSpace(value)
+		if utf8.RuneCountInString(text) > 8000 {
+			return "", nil, ErrInvalidChat
+		}
+		updates[name] = text
+	}
+	return basePrompt, updates, nil
+}
+
 func normalizeChatRequest(req *model.ChatRequest) (string, string, []model.ChatTurn, string, error) {
 	if req == nil {
 		return "", "", nil, "", ErrInvalidChat
