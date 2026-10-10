@@ -102,6 +102,8 @@ func New(cfg config.Config, db *gorm.DB) *gin.Engine {
 	adminProtected.POST("/upload/video", adminUploadHandler.UploadVideo)
 	adminProtected.POST("/upload/avatar", adminUploadHandler.UploadAvatar)
 	adminProtected.GET("/chat-logs", chatHandler.ListLogs)
+	adminProtected.GET("/chat-personas", chatHandler.ListPersonas)
+	adminProtected.PUT("/chat-personas/:scene_code", chatHandler.UpdatePersona)
 
 	return engine
 }

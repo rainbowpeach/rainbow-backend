@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	"rainbow-backend/internal/model"
 )
 
@@ -19,6 +21,22 @@ func (r *stubChatPersonaRepo) GetBySceneCode(context.Context, string) (*model.Ch
 		return nil, r.err
 	}
 	return r.persona, nil
+}
+
+func (r *stubChatPersonaRepo) List(context.Context) ([]model.ChatPersona, error) {
+	if r.persona == nil {
+		return nil, nil
+	}
+	return []model.ChatPersona{*r.persona}, nil
+}
+
+func (r *stubChatPersonaRepo) UpdatePrompts(_ context.Context, sceneCode, basePrompt string, modePrompts model.JSONMap) error {
+	if r.persona == nil || r.persona.SceneCode != sceneCode {
+		return gorm.ErrRecordNotFound
+	}
+	r.persona.BasePrompt = basePrompt
+	r.persona.ModePrompts = modePrompts
+	return nil
 }
 
 type stubChatLogRepo struct {
@@ -162,5 +180,30 @@ func TestChatReplyRateLimit(t *testing.T) {
 	}
 	if _, err := service.Reply(context.Background(), 9, req); !errors.Is(err, ErrChatRateLimited) {
 		t.Fatalf("expected rate limit, got %v", err)
+	}
+}
+
+func TestUpdatePersonaKeepsUneditedModes(t *testing.T) {
+	repo := &stubChatPersonaRepo{persona: &model.ChatPersona{
+		SceneCode:  "kobe-live",
+		BasePrompt: "旧人设",
+		ModePrompts: model.JSONMap{
+			"chat":    "旧聊天",
+			"fortune": "保留",
+		},
+	}}
+	service := NewChatService(repo, &stubChatLogRepo{}, &stubChatUserRepo{user: &model.User{}}, &stubChatClient{}, time.Second)
+
+	result, err := service.UpdatePersona(context.Background(), "kobe", &model.ChatPersonaUpdateRequest{
+		BasePrompt: "新人设",
+		ModePrompts: model.JSONMap{
+			"chat": "新聊天",
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdatePersona() error = %v", err)
+	}
+	if result.BasePrompt != "新人设" || result.ModePrompts["chat"] != "新聊天" || result.ModePrompts["fortune"] != "保留" {
+		t.Fatalf("persona = %#v", result)
 	}
 }
