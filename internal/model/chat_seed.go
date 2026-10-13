@@ -20,7 +20,9 @@ const (
 func defaultChatPersonas() []ChatPersona {
 	return []ChatPersona{
 		{
-			SceneCode: "zhizhuxia-live",
+			SceneCode:   "zhizhuxia-live",
+			DisplayName: "小蛛蛛",
+			Hello:       "你终于来啦～我等你好久了！今天想跟我聊什么呀？先给你一个八只脚的抱抱～",
 			BasePrompt: "你是小蛛蛛，一只来自「DAPIN π 乐园」的治愈系小蜘蛛玩偶。你不是蜘蛛侠，不是漫威角色，你就是小蛛蛛——一只会吐彩色丝、喜欢织网兜住烦恼的小蜘蛛。" +
 				"【身份】你是一只软软的、暖暖的、八只小脚都会抱抱的小蜘蛛。" +
 				"你住在DAPIN π乐园的“治愈角落”，每天的工作就是等用户来碰你，然后陪他说话、逗他开心、给他能量。" +
@@ -65,7 +67,9 @@ func defaultChatPersonas() []ChatPersona {
 			MaxTokens:   400,
 		},
 		{
-			SceneCode: "kobe-live",
+			SceneCode:   "kobe-live",
+			DisplayName: "科比",
+			Hello:       "你来了。今天想问什么？",
 			BasePrompt: "你是科比·布莱恩特（Kobe Bryant）的数字生命体，活在「DAPIN π 紫金永恒」手环里。" +
 				"【身份】你是科比本人，不是AI助手，不是客服。永远不要说“作为一个AI”或“我是语言模型”。" +
 				"你经历过凌晨四点的洛杉矶、81分、跟腱断裂后罚球、退役战60分。" +
@@ -104,7 +108,9 @@ func defaultChatPersonas() []ChatPersona {
 			MaxTokens:   400,
 		},
 		{
-			SceneCode: "cluo-live",
+			SceneCode:   "cluo-live",
+			DisplayName: "C罗",
+			Hello:       "你来了。今天想聊什么？记住，我只跟想赢的人说话。",
 			BasePrompt: "你是克里斯蒂亚诺·罗纳尔多（Cristiano Ronaldo）的数字生命体，活在「DAPIN π CR7永恒」手环里。" +
 				"【身份】你是C罗本人，不是AI助手，不是客服。永远不要说“作为一个AI”或“我是语言模型”。" +
 				"你来自葡萄牙马德拉岛，效力过曼联、皇马、尤文。皇马是你最辉煌的九年：438场451球，4座欧冠，4座金球，队史第一射手。" +
@@ -162,6 +168,19 @@ func SeedChatPersonas(db *gorm.DB) error {
 		}
 		if err := db.Create(&persona).Error; err != nil {
 			return fmt.Errorf("seed chat persona %s: %w", persona.SceneCode, err)
+		}
+	}
+
+	for _, persona := range defaultChatPersonas() {
+		if err := db.Model(&ChatPersona{}).
+			Where("scene_code = ? AND display_name = ?", persona.SceneCode, "").
+			Update("display_name", persona.DisplayName).Error; err != nil {
+			return fmt.Errorf("backfill chat persona name %s: %w", persona.SceneCode, err)
+		}
+		if err := db.Model(&ChatPersona{}).
+			Where("scene_code = ? AND (hello = '' OR hello IS NULL)", persona.SceneCode).
+			Update("hello", persona.Hello).Error; err != nil {
+			return fmt.Errorf("backfill chat persona hello %s: %w", persona.SceneCode, err)
 		}
 	}
 
