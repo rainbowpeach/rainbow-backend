@@ -20,7 +20,16 @@ func (r *stubChatPersonaRepo) GetBySceneCode(context.Context, string) (*model.Ch
 	if r.err != nil {
 		return nil, r.err
 	}
+	if r.persona == nil {
+		return nil, gorm.ErrRecordNotFound
+	}
 	return r.persona, nil
+}
+
+func (r *stubChatPersonaRepo) Create(_ context.Context, persona *model.ChatPersona) error {
+	copied := *persona
+	r.persona = &copied
+	return nil
 }
 
 func (r *stubChatPersonaRepo) List(context.Context) ([]model.ChatPersona, error) {
@@ -30,12 +39,24 @@ func (r *stubChatPersonaRepo) List(context.Context) ([]model.ChatPersona, error)
 	return []model.ChatPersona{*r.persona}, nil
 }
 
-func (r *stubChatPersonaRepo) UpdatePrompts(_ context.Context, sceneCode, basePrompt string, modePrompts model.JSONMap) error {
-	if r.persona == nil || r.persona.SceneCode != sceneCode {
+func (r *stubChatPersonaRepo) UpdatePrompts(_ context.Context, persona *model.ChatPersona) error {
+	if r.persona == nil || r.persona.SceneCode != persona.SceneCode {
 		return gorm.ErrRecordNotFound
 	}
-	r.persona.BasePrompt = basePrompt
-	r.persona.ModePrompts = modePrompts
+	r.persona.DisplayName = persona.DisplayName
+	r.persona.Hello = persona.Hello
+	r.persona.BasePrompt = persona.BasePrompt
+	r.persona.ModePrompts = persona.ModePrompts
+	r.persona.PresetInputs = persona.PresetInputs
+	return nil
+}
+
+type stubScenePages struct {
+	codes []string
+}
+
+func (s *stubScenePages) Create(_ context.Context, item *model.ScenePageConfig) error {
+	s.codes = append(s.codes, item.SceneCode)
 	return nil
 }
 
@@ -194,10 +215,15 @@ func TestUpdatePersonaKeepsUneditedModes(t *testing.T) {
 	}}
 	service := NewChatService(repo, &stubChatLogRepo{}, &stubChatUserRepo{user: &model.User{}}, &stubChatClient{}, time.Second)
 
-	result, err := service.UpdatePersona(context.Background(), "kobe", &model.ChatPersonaUpdateRequest{
-		BasePrompt: "新人设",
+	result, err := service.UpdatePersona(context.Background(), "kobe", &model.ChatPersonaWriteRequest{
+		DisplayName: "科比",
+		Hello:       "你来了。今天想问什么？",
+		BasePrompt:  "新人设",
 		ModePrompts: model.JSONMap{
 			"chat": "新聊天",
+		},
+		PresetInputs: model.JSONMap{
+			"praise": "夸我",
 		},
 	})
 	if err != nil {
@@ -205,5 +231,50 @@ func TestUpdatePersonaKeepsUneditedModes(t *testing.T) {
 	}
 	if result.BasePrompt != "新人设" || result.ModePrompts["chat"] != "新聊天" || result.ModePrompts["fortune"] != "保留" {
 		t.Fatalf("persona = %#v", result)
+	}
+	if result.DisplayName != "科比" || result.PresetInputs["praise"] != "夸我" {
+		t.Fatalf("persona = %#v", result)
+	}
+}
+
+func TestCreatePersonaAlsoCreatesScenePage(t *testing.T) {
+	repo := &stubChatPersonaRepo{}
+	pages := &stubScenePages{}
+	chat := NewChatService(repo, &stubChatLogRepo{}, &stubChatUserRepo{user: &model.User{}}, &stubChatClient{}, time.Second)
+	chat.SetScenePages(pages)
+
+	result, err := chat.CreatePersona(context.Background(), &model.ChatPersonaWriteRequest{
+		SceneCode:   "messi-live",
+		DisplayName: "梅西",
+		Hello:       "来了。",
+		BasePrompt:  "你是梅西。",
+		ModePrompts: model.JSONMap{"chat": "聊天。"},
+		PresetInputs: model.JSONMap{
+			"praise": "夸我",
+			"energy": "给我能量",
+			"learn":  "教我",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreatePersona() error = %v", err)
+	}
+	if result.SceneCode != "messi-live" || result.DisplayName != "梅西" {
+		t.Fatalf("persona = %#v", result)
+	}
+	if len(pages.codes) != 1 || pages.codes[0] != "messi-live" {
+		t.Fatalf("scene pages = %#v", pages.codes)
+	}
+	if repo.persona == nil || repo.persona.Temperature != 0.8 || repo.persona.MaxTokens != 400 {
+		t.Fatalf("stored = %#v", repo.persona)
+	}
+
+	_, err = chat.CreatePersona(context.Background(), &model.ChatPersonaWriteRequest{
+		SceneCode:   "messi-live",
+		DisplayName: "梅西",
+		Hello:       "来了。",
+		BasePrompt:  "你是梅西。",
+	})
+	if !errors.Is(err, ErrChatPersonaExists) {
+		t.Fatalf("expected duplicate, got %v", err)
 	}
 }

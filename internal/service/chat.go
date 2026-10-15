@@ -26,10 +26,11 @@ const (
 )
 
 var (
-	ErrChatNotConfigured = errors.New("chat not configured")
-	ErrInvalidChat       = errors.New("invalid chat")
-	ErrChatPersona       = errors.New("chat persona not found")
-	ErrChatRateLimited   = errors.New("chat rate limited")
+	ErrChatNotConfigured  = errors.New("chat not configured")
+	ErrInvalidChat        = errors.New("invalid chat")
+	ErrChatPersona        = errors.New("chat persona not found")
+	ErrChatPersonaExists  = errors.New("chat persona exists")
+	ErrChatRateLimited    = errors.New("chat rate limited")
 )
 
 var sceneAliases = map[string]string{
@@ -51,9 +52,14 @@ type ChatService struct {
 	logs     repo.ChatLogRepository
 	users    repo.UserProfileRepository
 	client   ChatCompletionClient
+	pages    scenePageConfigCreator
 	timeout  time.Duration
 	limiter  *userRateLimiter
 	now      func() time.Time
+}
+
+type scenePageConfigCreator interface {
+	Create(ctx context.Context, item *model.ScenePageConfig) error
 }
 
 func NewChatService(
@@ -75,6 +81,10 @@ func NewChatService(
 		limiter:  newUserRateLimiter(chatRateLimit, chatRateWindow),
 		now:      time.Now,
 	}
+}
+
+func (s *ChatService) SetScenePages(pages scenePageConfigCreator) {
+	s.pages = pages
 }
 
 func (s *ChatService) Reply(ctx context.Context, userID uint, req *model.ChatRequest) (*model.ChatReplyResponse, error) {
@@ -191,12 +201,56 @@ func (s *ChatService) ListPersonas(ctx context.Context) ([]*model.ChatPersonaAdm
 	return list, nil
 }
 
-func (s *ChatService) UpdatePersona(ctx context.Context, sceneCode string, req *model.ChatPersonaUpdateRequest) (*model.ChatPersonaAdminResponse, error) {
+func (s *ChatService) CreatePersona(ctx context.Context, req *model.ChatPersonaWriteRequest) (*model.ChatPersonaAdminResponse, error) {
+	if req == nil {
+		return nil, ErrInvalidChat
+	}
+	code, err := canonicalSceneCode(req.SceneCode)
+	if err != nil {
+		return nil, ErrInvalidChat
+	}
+	displayName, hello, basePrompt, modes, presets, err := normalizePersonaWrite(req)
+	if err != nil {
+		return nil, err
+	}
+
+	existing, err := s.personas.GetBySceneCode(ctx, code)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("get chat persona: %w", err)
+	}
+	if err == nil && existing != nil {
+		return nil, ErrChatPersonaExists
+	}
+
+	if err := s.ensureEmptyScenePage(ctx, code); err != nil {
+		return nil, err
+	}
+
+	persona := &model.ChatPersona{
+		SceneCode:    code,
+		DisplayName:  displayName,
+		Hello:        hello,
+		BasePrompt:   basePrompt,
+		ModePrompts:  modes,
+		PresetInputs: presets,
+		Temperature:  defaultTemperature,
+		MaxTokens:    defaultMaxTokens,
+	}
+	if err := s.personas.Create(ctx, persona); err != nil {
+		if isDuplicateScenePageConfigError(err) {
+			return nil, ErrChatPersonaExists
+		}
+		return nil, fmt.Errorf("create chat persona: %w", err)
+	}
+	return model.NewChatPersonaAdminResponse(persona), nil
+}
+
+func (s *ChatService) UpdatePersona(ctx context.Context, sceneCode string, req *model.ChatPersonaWriteRequest) (*model.ChatPersonaAdminResponse, error) {
 	code, err := canonicalSceneCode(sceneCode)
 	if err != nil {
 		return nil, ErrInvalidChat
 	}
-	basePrompt, modeUpdates, err := normalizePersonaUpdate(req)
+	displayName, hello, basePrompt, modeUpdates, presetUpdates, err := normalizePersonaWrite(req)
 	if err != nil {
 		return nil, err
 	}
@@ -209,46 +263,87 @@ func (s *ChatService) UpdatePersona(ctx context.Context, sceneCode string, req *
 		return nil, fmt.Errorf("get chat persona: %w", err)
 	}
 
-	merged := model.JSONMap{}
-	for key, value := range persona.ModePrompts {
-		merged[key] = value
-	}
-	for key, value := range modeUpdates {
-		merged[key] = value
-	}
-	if err := s.personas.UpdatePrompts(ctx, code, basePrompt, merged); err != nil {
+	persona.DisplayName = displayName
+	persona.Hello = hello
+	persona.BasePrompt = basePrompt
+	persona.ModePrompts = mergeJSONMap(persona.ModePrompts, modeUpdates)
+	persona.PresetInputs = mergeJSONMap(persona.PresetInputs, presetUpdates)
+	if err := s.personas.UpdatePrompts(ctx, persona); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrChatPersona
 		}
 		return nil, fmt.Errorf("update chat persona: %w", err)
 	}
-
-	persona.BasePrompt = basePrompt
-	persona.ModePrompts = merged
 	return model.NewChatPersonaAdminResponse(persona), nil
 }
 
-func normalizePersonaUpdate(req *model.ChatPersonaUpdateRequest) (string, model.JSONMap, error) {
+func (s *ChatService) ensureEmptyScenePage(ctx context.Context, sceneCode string) error {
+	if s.pages == nil {
+		return nil
+	}
+	err := s.pages.Create(ctx, &model.ScenePageConfig{
+		SceneCode:   sceneCode,
+		TagsDefault: model.JSONStringArray{},
+		ImageURLs:   model.JSONStringArray{},
+	})
+	if err != nil && !isDuplicateScenePageConfigError(err) {
+		return fmt.Errorf("create scene page config: %w", err)
+	}
+	return nil
+}
+
+func normalizePersonaWrite(req *model.ChatPersonaWriteRequest) (string, string, string, model.JSONMap, model.JSONMap, error) {
 	if req == nil {
-		return "", nil, ErrInvalidChat
+		return "", "", "", nil, nil, ErrInvalidChat
+	}
+	displayName := strings.TrimSpace(req.DisplayName)
+	if displayName == "" || utf8.RuneCountInString(displayName) > 64 {
+		return "", "", "", nil, nil, ErrInvalidChat
+	}
+	hello := strings.TrimSpace(req.Hello)
+	if hello == "" || utf8.RuneCountInString(hello) > 500 {
+		return "", "", "", nil, nil, ErrInvalidChat
 	}
 	basePrompt := strings.TrimSpace(req.BasePrompt)
 	if basePrompt == "" || utf8.RuneCountInString(basePrompt) > 20000 {
-		return "", nil, ErrInvalidChat
+		return "", "", "", nil, nil, ErrInvalidChat
 	}
+	modes, err := normalizePromptMap(req.ModePrompts)
+	if err != nil {
+		return "", "", "", nil, nil, err
+	}
+	presets, err := normalizePromptMap(req.PresetInputs)
+	if err != nil {
+		return "", "", "", nil, nil, err
+	}
+	return displayName, hello, basePrompt, modes, presets, nil
+}
+
+func normalizePromptMap(source model.JSONMap) (model.JSONMap, error) {
 	updates := model.JSONMap{}
-	for key, value := range req.ModePrompts {
+	for key, value := range source {
 		name := strings.TrimSpace(key)
 		if name == "" || utf8.RuneCountInString(name) > 32 {
-			return "", nil, ErrInvalidChat
+			return nil, ErrInvalidChat
 		}
 		text := strings.TrimSpace(value)
 		if utf8.RuneCountInString(text) > 8000 {
-			return "", nil, ErrInvalidChat
+			return nil, ErrInvalidChat
 		}
 		updates[name] = text
 	}
-	return basePrompt, updates, nil
+	return updates, nil
+}
+
+func mergeJSONMap(current, updates model.JSONMap) model.JSONMap {
+	merged := model.JSONMap{}
+	for key, value := range current {
+		merged[key] = value
+	}
+	for key, value := range updates {
+		merged[key] = value
+	}
+	return merged
 }
 
 func normalizeChatRequest(req *model.ChatRequest) (string, string, []model.ChatTurn, string, error) {

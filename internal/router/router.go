@@ -45,6 +45,7 @@ func New(cfg config.Config, db *gorm.DB) *gin.Engine {
 	chatLogRepo := repo.NewChatLogRepository(db)
 	arkClient := service.NewArkChatClient(cfg.Ark, &http.Client{Timeout: cfg.Ark.Timeout})
 	chatService := service.NewChatService(chatPersonaRepo, chatLogRepo, userRepo, arkClient, cfg.Ark.Timeout)
+	chatService.SetScenePages(scenePageConfigRepo)
 	adminAuthHandler := handler.NewAdminAuthHandler(authService)
 	miniProgramAuthHandler := handler.NewMiniProgramAuthHandler(miniProgramAuthService)
 	userHandler := handler.NewUserHandler(userProfileService, uploadService)
@@ -103,6 +104,7 @@ func New(cfg config.Config, db *gorm.DB) *gin.Engine {
 	adminProtected.POST("/upload/avatar", adminUploadHandler.UploadAvatar)
 	adminProtected.GET("/chat-logs", chatHandler.ListLogs)
 	adminProtected.GET("/chat-personas", chatHandler.ListPersonas)
+	adminProtected.POST("/chat-personas", chatHandler.CreatePersona)
 	adminProtected.PUT("/chat-personas/:scene_code", chatHandler.UpdatePersona)
 
 	return engine

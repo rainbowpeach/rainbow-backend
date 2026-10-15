@@ -71,8 +71,25 @@ func (h *ChatHandler) ListPersonas(c *gin.Context) {
 	model.WriteOK(c, result)
 }
 
+func (h *ChatHandler) CreatePersona(c *gin.Context) {
+	var req model.ChatPersonaWriteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("admin chat persona create invalid request %s ip=%s err=%v", adminActor(c), c.ClientIP(), err)
+		model.WriteError(c, http.StatusBadRequest, model.CodeInvalidParams, "invalid params")
+		return
+	}
+
+	result, err := h.chat.CreatePersona(c.Request.Context(), &req)
+	if err != nil {
+		log.Printf("admin chat persona create failed %s ip=%s scene=%s err=%v", adminActor(c), c.ClientIP(), req.SceneCode, err)
+		h.respondChatError(c, err)
+		return
+	}
+	model.WriteOK(c, result)
+}
+
 func (h *ChatHandler) UpdatePersona(c *gin.Context) {
-	var req model.ChatPersonaUpdateRequest
+	var req model.ChatPersonaWriteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Printf("admin chat persona update invalid request %s ip=%s err=%v", adminActor(c), c.ClientIP(), err)
 		model.WriteError(c, http.StatusBadRequest, model.CodeInvalidParams, "invalid params")
@@ -90,6 +107,8 @@ func (h *ChatHandler) UpdatePersona(c *gin.Context) {
 
 func (h *ChatHandler) respondChatError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, service.ErrChatPersonaExists):
+		model.WriteError(c, http.StatusBadRequest, model.CodeInvalidParams, "duplicate scene_code")
 	case errors.Is(err, service.ErrInvalidChat), errors.Is(err, service.ErrChatPersona):
 		model.WriteError(c, http.StatusBadRequest, model.CodeInvalidParams, "invalid params")
 	case errors.Is(err, service.ErrChatRateLimited):

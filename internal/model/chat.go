@@ -9,6 +9,8 @@ const (
 
 type ChatPersona struct {
 	SceneCode    string    `gorm:"column:scene_code;size:128;primaryKey" json:"scene_code"`
+	DisplayName  string    `gorm:"column:display_name;size:64;not null;default:''" json:"-"`
+	Hello        string    `gorm:"column:hello;size:2000;not null;default:''" json:"-"`
 	BasePrompt   string    `gorm:"column:base_prompt;type:text;not null" json:"-"`
 	ModePrompts  JSONMap   `gorm:"column:mode_prompts;type:json;not null" json:"-"`
 	PresetInputs JSONMap   `gorm:"column:preset_inputs;type:json;not null" json:"-"`
@@ -77,29 +79,43 @@ type ChatLogListResponse struct {
 }
 
 type ChatPersonaAdminResponse struct {
-	SceneCode   string    `json:"scene_code"`
-	BasePrompt  string    `json:"base_prompt"`
-	ModePrompts JSONMap   `json:"mode_prompts"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	SceneCode    string    `json:"scene_code"`
+	DisplayName  string    `json:"display_name"`
+	Hello        string    `json:"hello"`
+	BasePrompt   string    `json:"base_prompt"`
+	ModePrompts  JSONMap   `json:"mode_prompts"`
+	PresetInputs JSONMap   `json:"preset_inputs"`
+	UpdatedAt    time.Time `json:"updatedAt"`
 }
 
-type ChatPersonaUpdateRequest struct {
-	BasePrompt  string  `json:"base_prompt"`
-	ModePrompts JSONMap `json:"mode_prompts"`
+type ChatPersonaWriteRequest struct {
+	SceneCode    string  `json:"scene_code"`
+	DisplayName  string  `json:"display_name"`
+	Hello        string  `json:"hello"`
+	BasePrompt   string  `json:"base_prompt"`
+	ModePrompts  JSONMap `json:"mode_prompts"`
+	PresetInputs JSONMap `json:"preset_inputs"`
 }
 
 func NewChatPersonaAdminResponse(persona *ChatPersona) *ChatPersonaAdminResponse {
 	if persona == nil {
 		return nil
 	}
-	prompts := JSONMap{}
-	for key, value := range persona.ModePrompts {
-		prompts[key] = value
-	}
 	return &ChatPersonaAdminResponse{
-		SceneCode:   persona.SceneCode,
-		BasePrompt:  persona.BasePrompt,
-		ModePrompts: prompts,
-		UpdatedAt:   persona.UpdatedAt,
+		SceneCode:    persona.SceneCode,
+		DisplayName:  persona.DisplayName,
+		Hello:        persona.Hello,
+		BasePrompt:   persona.BasePrompt,
+		ModePrompts:  copyJSONMap(persona.ModePrompts),
+		PresetInputs: copyJSONMap(persona.PresetInputs),
+		UpdatedAt:    persona.UpdatedAt,
 	}
+}
+
+func copyJSONMap(source JSONMap) JSONMap {
+	copied := JSONMap{}
+	for key, value := range source {
+		copied[key] = value
+	}
+	return copied
 }

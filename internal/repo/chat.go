@@ -12,7 +12,8 @@ import (
 type ChatPersonaRepository interface {
 	GetBySceneCode(ctx context.Context, sceneCode string) (*model.ChatPersona, error)
 	List(ctx context.Context) ([]model.ChatPersona, error)
-	UpdatePrompts(ctx context.Context, sceneCode, basePrompt string, modePrompts model.JSONMap) error
+	Create(ctx context.Context, persona *model.ChatPersona) error
+	UpdatePrompts(ctx context.Context, persona *model.ChatPersona) error
 }
 
 type ChatLogRepository interface {
@@ -45,17 +46,24 @@ func (r *GormChatPersonaRepository) List(ctx context.Context) ([]model.ChatPerso
 	return items, nil
 }
 
-func (r *GormChatPersonaRepository) UpdatePrompts(ctx context.Context, sceneCode, basePrompt string, modePrompts model.JSONMap) error {
+func (r *GormChatPersonaRepository) Create(ctx context.Context, persona *model.ChatPersona) error {
+	return r.db.WithContext(ctx).Create(persona).Error
+}
+
+func (r *GormChatPersonaRepository) UpdatePrompts(ctx context.Context, persona *model.ChatPersona) error {
 	var count int64
-	if err := r.db.WithContext(ctx).Model(&model.ChatPersona{}).Where("scene_code = ?", sceneCode).Count(&count).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&model.ChatPersona{}).Where("scene_code = ?", persona.SceneCode).Count(&count).Error; err != nil {
 		return err
 	}
 	if count == 0 {
 		return gorm.ErrRecordNotFound
 	}
-	return r.db.WithContext(ctx).Model(&model.ChatPersona{}).Where("scene_code = ?", sceneCode).Updates(map[string]any{
-		"base_prompt":  basePrompt,
-		"mode_prompts": modePrompts,
+	return r.db.WithContext(ctx).Model(&model.ChatPersona{}).Where("scene_code = ?", persona.SceneCode).Updates(map[string]any{
+		"display_name":  persona.DisplayName,
+		"hello":         persona.Hello,
+		"base_prompt":   persona.BasePrompt,
+		"mode_prompts":  persona.ModePrompts,
+		"preset_inputs": persona.PresetInputs,
 	}).Error
 }
 
